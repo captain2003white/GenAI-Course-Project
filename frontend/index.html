@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commerce Agents — AI Shopping Assistant</title>
+    <style>
+        /* ============================================
+           全局样式
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* ============================================
+           主容器 — 仿 Mac 风格卡片
+           ============================================ */
+        .app-container {
+            width: 480px;
+            height: 780px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ============================================
+           顶部标题栏
+           ============================================ */
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+
+        /* ============================================
+           聊天消息区 — 滚动容器
+           ============================================ */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: #f8f9ff;
+        }
+
+        /* 消息气泡 */
+        .message {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot {
+            background: white;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .message.bot .thinking {
+            display: flex;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        .message.bot .thinking span {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .message.bot .thinking span:nth-child(1) { animation-delay: -0.32s; }
+        .message.bot .thinking span:nth-child(2) { animation-delay: -0.16s; }
+        .message.bot .thinking span:nth-child(3) { animation-delay: 0s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* ============================================
+           商品卡片
+           ============================================ */
+        .product-card {
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            gap: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            animation: fadeIn 0.3s ease;
+            align-self: flex-start;
+            max-width: 100%;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+
+        .product-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .product-card img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #f8f8f8;
+            flex-shrink: 0;
+        }
+
+        .product-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .product-info .title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.3;
+        }
+
+        .product-info .category {
+            font-size: 11px;
+            color: #667eea;
+            margin-top: 4px;
+            text-transform: capitalize;
+        }
+
+        .product-info .price {
+            font-size: 16px;
+            font-weight: 700;
+            color: #e74c3c;
+            margin-top: 4px;
+        }
+
+        .product-info .rating {
+            font-size: 12px;
+            color: #f39c12;
+            margin-top: 2px;
+        }
+
+        .product-info .actions {
+            margin-top: 8px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-buy {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-buy:hover {
+            background: #5a6fd6;
+        }
+
+        .btn-buy:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* ============================================
+           输入区
+           ============================================ */
+        .input-area {
+            padding: 16px 20px;
+            border-top: 1px solid #eee;
+            background: white;
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-area input:focus {
+            border-color: #667eea;
+        }
+
+        .input-area button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .input-area button:hover {
+            background: #5a6fd6;
+        }
+
+        .input-area button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* ============================================
+           支付弹窗
+           ============================================ */
+        .payment-modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .payment-modal.active {
+            display: flex;
+        }
+
+        .payment-content {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            width: 360px;
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .payment-content h2 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .payment-content p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .payment-content .amount {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+            margin: 16px 0;
+        }
+
+        .payment-content .test-card {
+            background: #f8f9ff;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #333;
+            margin: 12px 0;
+        }
+
+        .payment-content .test-card code {
+            background: #e8e8ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .btn-open-payment {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .btn-open-payment:hover {
+            background: #5a6fd6;
+        }
+
+        .btn-close {
+            background: #f0f0f0;
+            color: #666;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .payment-status {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .payment-status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .payment-status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- 标题 -->
+    <div class="header">
+        <h1>🛍️ Commerce Agents</h1>
+        <p>AI-Powered Shopping Assistant</p>
+    </div>
+
+    <!-- 聊天消息区 -->
+    <div class="chat-messages" id="chatMessages">
+        <div class="message bot">
+            Hi! I'm your AI shopping assistant. I can help you find products, compare them, and make purchases. What are you looking for today?
+        </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-area">
+        <input type="text" id="userInput" placeholder="Search for products..." autofocus>
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+
+    <!-- 支付弹窗 -->
+    <div class="payment-modal" id="paymentModal">
+        <div class="payment-content">
+            <h2>🛒 Confirm Purchase</h2>
+            <p id="paymentProductName"></p>
+            <div class="amount" id="paymentAmount"></div>
+            <div class="test-card">
+                💳 Test Card: <code>4242 4242 4242 4242</code><br>
+                Exp: <code>12/34</code> &nbsp; CVV: <code>123</code>
+            </div>
+            <button class="btn-open-payment" id="payBtn" onclick="openStripePayment()">
+                Pay with Stripe →
+            </button>
+            <div class="payment-status" id="paymentStatus"></div>
+            <button class="btn-close" onclick="closePaymentModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================
+    // 状态管理
+    // ============================================
+    let sessionId = null;
+    let currentProduct = null;
+
+    // ============================================
+    // 发送消息
+    // ============================================
+    async function sendMessage() {
+        const input = document.getElementById('userInput');
+        const message = input.value.trim();
+        if (!message) return;
+
+        // 显示用户消息
+        addMessage(message, 'user');
+        input.value = '';
+
+        // 显示"正在思考"动画
+        const thinkingId = showThinking();
+
+        // 禁用输入
+        setInputDisabled(true);
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: sessionId,
+                }),
+            });
+
+            const data = await response.json();
+            sessionId = data.session_id;
+
+            // 移除"思考中"动画
+            removeThinking(thinkingId);
+
+            // 显示机器人回复
+            addMessage(data.reply, 'bot');
+
+            // 显示商品卡片
+            if (data.products && data.products.length > 0) {
+                data.products.forEach(product => addProductCard(product));
+            }
+
+        } catch (error) {
+            removeThinking(thinkingId);
+            addMessage('Sorry, something went wrong. Please try again.', 'bot');
+        } finally {
+            setInputDisabled(false);
+            document.getElementById('userInput').focus();
+        }
+    }
+
+    // ============================================
+    // 添加消息气泡
+    // ============================================
+    function addMessage(text, sender) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        div.textContent = text;
+        container.appendChild(div);
+        scrollToBottom();
+    }
+
+    // ============================================
+    // "思考中"动画
+    // ============================================
+    function showThinking() {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'message bot';
+        div.id = 'thinking-' + Date.now();
+        div.innerHTML = `
+            <div class="thinking">
+                <span></span><span></span><span></span>
+            </div>`;
+        container.appendChild(div);
+        scrollToBottom();
+        return div.id;
+    }
+
+    function removeThinking(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    // ============================================
+    // 商品卡片
+    // ============================================
+    function addProductCard(product) {
+        const container = document.getElementById('chatMessages');
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        card.innerHTML = `
+            <img src="${product.image}" alt="${product.title}" onerror="this.src='https://via.placeholder.com/80'">
+            <div class="product-info">
+                <div class="title">${product.title}</div>
+                <div class="category">${product.category}</div>
+                <div class="price">$${product.price}</div>
+                <div class="rating">⭐ ${product.rating?.rate ?? 'N/A'} (${product.rating?.count ?? 0})</div>
+                <div class="actions">
+                    <button class="btn-buy" onclick="openPayment(${product.id}, '${product.title.replace(/'/g, "\\'")}', ${product.price})">
+                        Buy Now
+                    </button>
+                </div>
+            </div>`;
+        container.appendChild(card);
+        scrollToBottom();
+    }
+
+    // ============================================
+    // 支付流程
+    // ============================================
+    function openPayment(productId, productName, price) {
+        currentProduct = { id: productId, name: productName, price: price };
+
+        document.getElementById('paymentProductName').textContent = productName;
+        document.getElementById('paymentAmount').textContent = `$${price.toFixed(2)}`;
+        document.getElementById('paymentStatus').className = 'payment-status';
+        document.getElementById('paymentStatus').style.display = 'none';
+        document.getElementById('payBtn').disabled = false;
+        document.getElementById('payBtn').textContent = 'Pay with Stripe →';
+
+        document.getElementById('paymentModal').classList.add('active');
+    }
+
+    function closePaymentModal() {
+        document.getElementById('paymentModal').classList.remove('active');
+        currentProduct = null;
+    }
+
+    async function openStripePayment() {
+        if (!currentProduct) return;
+
+        const btn = document.getElementById('payBtn');
+        btn.disabled = true;
+        btn.textContent = 'Creating payment link...';
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/buy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: currentProduct.id,
+                    quantity: 1,
+                    session_id: sessionId,
+                }),
+            });
+
+            if (!response.ok) throw new Error('Payment creation failed');
+
+            const data = await response.json();
+
+            // 在 Stripe 支付页面打开
+            window.open(data.payment_url, '_blank');
+
+            // 显示成功状态
+            const status = document.getElementById('paymentStatus');
+            status.className = 'payment-status success';
+            status.style.display = 'block';
+            status.textContent = '✅ Payment link opened! Complete the payment in the new tab.';
+            btn.textContent = '✅ Payment Link Created';
+
+            // 在聊天中显示确认
+            addMessage(`✅ Payment link created for **${data.product_name}** — $${data.total_amount.toFixed(2)}. Complete payment in the new tab.`, 'bot');
+
+        } catch (error) {
+            const status = document.getElementById('paymentStatus');
+            status.className = 'payment-status error';
+            status.style.display = 'block';
+            status.textContent = '❌ Failed to create payment. Please try again.';
+            btn.disabled = false;
+            btn.textContent = 'Pay with Stripe →';
+        }
+    }
+
+    // ============================================
+    // 工具函数
+    // ============================================
+    function scrollToBottom() {
+        const container = document.getElementById('chatMessages');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function setInputDisabled(disabled) {
+        document.getElementById('userInput').disabled = disabled;
+        document.getElementById('sendBtn').disabled = disabled;
+    }
+
+    // 回车发送
+    document.getElementById('userInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sendMessage();
+    });
+</script>
+
+</body>
+</html>
