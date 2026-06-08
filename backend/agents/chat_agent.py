@@ -17,6 +17,7 @@ LLM output format includes action field:
 
 import json
 import os
+import re
 from openai import OpenAI
 from typing import List, Optional
 from dotenv import load_dotenv
@@ -90,15 +91,48 @@ class ChatAgent:
     def __init__(self):
         self.conversation_history = []
 
+    @staticmethod
+    def _parse_llm_output(text: str) -> Optional[dict]:
+        """Robust JSON extraction from LLM output."""
+        if not text:
+            return None
+
+        # Strategy 1: Try parsing the whole output as JSON
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Extract from markdown code blocks
+        blocks = re.findall(r'```(?:json)?\s*([\s\S]*?)```', text)
+        for block in blocks:
+            block = block.strip()
+            if block.startswith("{"):
+                try:
+                    return json.loads(block)
+                except json.JSONDecodeError:
+                    continue
+
+        # Strategy 3: Find any JSON object in the text
+        m = re.search(r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}', text)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+
+        return None
+
     async def process_message(self, user_message: str) -> dict:
         """
         Process a user message
 
         Returns:
         {
-            "reply": str,          # Response text for user
+            "reply": str,              # Response text for user
             "products": List[Product],  # Related products
-            "action": str,         # Action triggered
+            "action": str,             # Action triggered
+            "usage": dict,             # Token usage: prompt_tokens, completion_tokens, total_tokens
         }
         """
         # Build message history
@@ -119,20 +153,36 @@ class ChatAgent:
 
             llm_output = response.choices[0].message.content.strip()
 
+            # Capture token usage from DeepSeek response
+            usage_data = {}
+            if hasattr(response, 'usage') and response.usage:
+                usage_data = {
+                    "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0) or 0,
+                    "completion_tokens": getattr(response.usage, 'completion_tokens', 0) or 0,
+                    "total_tokens": getattr(response.usage, 'total_tokens', 0) or 0,
+                }
+                print(f"[ChatAgent] Token usage: {usage_data}", flush=True)
+
             # Parse JSON output
             if "```json" in llm_output:
                 llm_output = llm_output.split("```json")[1].split("```")[0].strip()
             elif "```" in llm_output:
                 llm_output = llm_output.split("```")[1].split("```")[0].strip()
 
-            action_data = json.loads(llm_output)
+            action_data = self._parse_llm_output(llm_output)
+            if action_data is None:
+                # LLM didn't output valid JSON — treat as plain chat
+                print(f"[ChatAgent] LLM output was not valid JSON, treating as chat message", flush=True)
+                action_data = {"action": "chat", "reply": llm_output}
 
             # Save conversation history
             self.conversation_history.append({"role": "user", "content": user_message})
             self.conversation_history.append({"role": "assistant", "content": llm_output})
 
             # Execute the action
-            return await self._execute_action(action_data)
+            result = await self._execute_action(action_data)
+            result["usage"] = usage_data
+            return result
 
         except Exception as e:
             return {

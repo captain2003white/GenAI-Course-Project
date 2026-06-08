@@ -1,235 +1,622 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Evaluation Dashboard — Commerce Agents</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f0f2f5;
-            color: #333;
-            padding: 24px;
-        }
-        .header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 24px;
-        }
-        .header h1 { font-size: 24px; }
-        .last-update { color: #888; font-size: 13px; }
-        .refresh-btn {
-            background: #667eea; color: white; border: none;
-            padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;
-        }
-        .refresh-btn:hover { background: #5a6fd6; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Developer Console — Commerce Agents</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --sidebar: #1a1d23;
+  --sidebar-hover: #2a2d35;
+  --text: #1a1d23;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border: #e5e7eb;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --green: #10b981;
+  --yellow: #f59e0b;
+  --red: #ef4444;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  min-height: 100vh;
+  line-height: 1.5;
+}
 
-        /* Summary Cards */
-        .cards {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
-        }
-        .card {
-            background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .card .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-        .card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
-        .card .value.green { color: #22c55e; }
-        .card .value.yellow { color: #eab308; }
-        .card .value.red { color: #ef4444; }
-        .card .sub { font-size: 12px; color: #888; margin-top: 4px; }
+/* ── Sidebar ── */
+.sidebar {
+  width: 240px;
+  background: var(--sidebar);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.sidebar-header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.sidebar-header span { font-size: 11px; color: var(--text-muted); display: block; margin-top: 2px; }
+.sidebar-nav { padding: 12px 8px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 6px;
+  font-size: 14px; color: rgba(255,255,255,0.65);
+  cursor: pointer; transition: all 0.15s;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item:hover { background: var(--sidebar-hover); color: #fff; }
+.nav-item.active { background: var(--primary); color: #fff; }
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px; color: var(--text-muted);
+}
+.sidebar-footer a { color: var(--primary); text-decoration: none; }
+.sidebar-footer a:hover { text-decoration: underline; }
 
-        /* Chart */
-        .chart-container {
-            background: white; border-radius: 12px; padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;
-        }
-        .chart-container h2 { font-size: 16px; margin-bottom: 16px; }
-        .chart-wrapper { height: 250px; }
+/* ── Main Content ── */
+.main { flex: 1; min-width: 0; padding: 32px; overflow-y: auto; }
+.page { display: none; }
+.page.active { display: block; }
 
-        /* Table */
-        .table-container {
-            background: white; border-radius: 12px; padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .table-container h2 { font-size: 16px; margin-bottom: 16px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #eee; color: #888; font-weight: 600; font-size: 12px; text-transform: uppercase; }
-        td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
-        tr:hover { background: #f8f9ff; }
-        .score-badge {
-            display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
-        }
-        .score-high { background: #dcfce7; color: #166534; }
-        .score-mid { background: #fef9c3; color: #854d0e; }
-        .score-low { background: #fee2e2; color: #991b1b; }
-        .score-unknown { color: #ccc; }
-    </style>
+.page-header { margin-bottom: 24px; }
+.page-header h2 { font-size: 20px; font-weight: 600; }
+.page-header p { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ── Summary Cards ── */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+.card {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.card .label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
+.card .value.green { color: var(--green); }
+.card .value.yellow { color: var(--yellow); }
+.card .value.red { color: var(--red); }
+.card .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Chart Section ── */
+.chart-section {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border);
+  margin-bottom: 28px;
+}
+.chart-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.chart-wrap { height: 240px; }
+
+/* ── Traces Table ── */
+.traces-section {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+  overflow: hidden;
+}
+.traces-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.traces-header h3 { font-size: 14px; font-weight: 600; }
+.traces-header .count { font-size: 12px; color: var(--text-secondary); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary); font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: var(--bg);
+}
+td { padding: 12px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover { background: #f8f9ff; cursor: pointer; }
+.truncate { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-green { background: #d1fae5; color: #065f46; }
+.badge-yellow { background: #fef3c7; color: #92400e; }
+.badge-red { background: #fee2e2; color: #991b1b; }
+.badge-gray { background: #f3f4f6; color: #6b7280; }
+
+.score-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
+.score-pass { color: var(--green); }
+.score-warn { color: var(--yellow); }
+.score-fail { color: var(--red); }
+
+.trace-link {
+  color: var(--primary); text-decoration: none; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.trace-link:hover { text-decoration: underline; }
+
+/* ── Detail Panel ── */
+.detail-panel {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); border: 1px solid var(--border);
+  margin-top: 28px;
+  display: none;
+}
+.detail-panel.open { display: block; }
+.detail-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.detail-header h3 { font-size: 14px; font-weight: 600; }
+.detail-close {
+  background: none; border: none; font-size: 18px; color: var(--text-secondary);
+  cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.detail-close:hover { background: var(--bg); }
+.detail-body { padding: 20px; }
+.detail-body .field { margin-bottom: 16px; }
+.detail-body .field-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.detail-body .field-value { font-size: 14px; }
+.detail-body .field-value pre {
+  background: var(--bg); padding: 12px; border-radius: 6px;
+  font-size: 13px; overflow-x: auto; white-space: pre-wrap;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+.detail-scores { display: flex; gap: 16px; margin-top: 16px; }
+.detail-score {
+  flex: 1; padding: 16px; border-radius: 6px; border: 1px solid var(--border);
+  text-align: center;
+}
+.detail-score .metric { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+.detail-score .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Loading ── */
+.loading { text-align: center; padding: 40px; color: var(--text-muted); }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Header actions ── */
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.btn {
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  cursor: pointer; transition: all 0.15s;
+}
+.btn:hover { background: var(--bg); }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-dark); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .sidebar { width: 56px; }
+  .sidebar-header h1, .sidebar-header span, .sidebar-footer { display: none; }
+  .nav-item span:not(.icon) { display: none; }
+  .nav-item { justify-content: center; padding: 12px; }
+  .cards { grid-template-columns: 1fr; }
+}
+
+/* ── Status indicator ── */
+.status-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.green { background: var(--green); }
+.status-dot.yellow { background: var(--yellow); }
+.status-dot.red { background: var(--red); }
+</style>
 </head>
 <body>
-    <div class="header">
-        <div>
-            <h1>📊 Evaluation Dashboard</h1>
-            <div class="last-update">Last updated: <span id="updateTime">—</span></div>
-        </div>
-        <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+
+<!-- ─── Sidebar ─── -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>&#9670; Commerce Agents</h1>
+    <span>Developer Console</span>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-page="traces">
+      <span class="icon">&#9776;</span>
+      <span>Recent Traces</span>
+    </button>
+    <button class="nav-item" data-page="metrics">
+      <span class="icon">&#9673;</span>
+      <span>Metrics</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="/">&#8592; Back to Chat</a>
+  </div>
+</aside>
+
+<!-- ─── Main Content ─── -->
+<main class="main">
+
+  <!-- ══════ Traces Page ══════ -->
+  <div class="page active" id="page-traces">
+    <div class="page-header">
+      <h2>Recent Traces</h2>
+      <p>Monitor every agent interaction in real time</p>
     </div>
 
-    <!-- Summary Cards -->
+    <!-- Summary cards -->
     <div class="cards" id="summaryCards">
-        <div class="card"><div class="label">Total Evaluations</div><div class="value" id="totalEvals">—</div></div>
-        <div class="card"><div class="label">Avg Faithfulness</div><div class="value" id="avgFaith">—</div><div class="sub">target: ≥ 0.70</div></div>
-        <div class="card"><div class="label">Avg Answer Relevancy</div><div class="value" id="avgRelevancy">—</div><div class="sub">target: ≥ 0.70</div></div>
-        <div class="card"><div class="label">Pass Rate</div><div class="value" id="passRate">—</div><div class="sub">both metrics ≥ 0.7</div></div>
+      <div class="card">
+        <div class="label">Trace Count</div>
+        <div class="value" id="totalEvals" style="font-size:28px;">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Avg Search Precision</div>
+        <div class="value" id="avgSearchPrecision">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Total Tokens Used</div>
+        <div class="value" id="totalTokens" style="font-size:28px;">—</div>
+        <div class="sub">across all traces</div>
+      </div>
     </div>
 
-    <!-- Score Trend Chart -->
-    <div class="chart-container">
-        <h2>📈 Score Trend (Last 10)</h2>
-        <div class="chart-wrapper">
-            <canvas id="trendChart"></canvas>
+    <!-- Traces table -->
+    <div class="traces-section">
+      <div class="traces-header">
+        <h3>Trace History</h3>
+        <div class="header-actions">
+          <span class="count" id="traceCount">0 records</span>
+          <button class="btn" onclick="loadData()">&#8635; Refresh</button>
         </div>
-    </div>
-
-    <!-- Recent Evaluations Table -->
-    <div class="table-container">
-        <h2>📋 Recent Evaluations</h2>
+      </div>
+      <div id="tracesTableWrap">
         <table>
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Question</th>
-                    <th>Faithfulness</th>
-                    <th>Answer Relevancy</th>
-                    <th>Products</th>
-                </tr>
-            </thead>
-            <tbody id="evalTableBody"></tbody>
+          <thead>
+            <tr>
+              <th style="width:80px;">Time</th>
+              <th style="width:80px;">Action</th>
+              <th>Query</th>
+              <th style="width:100px;">Precision</th>
+              <th style="width:100px;">Coverage</th>
+              <th style="width:100px;">Accuracy</th>
+              <th style="width:70px;">Tokens</th>
+              <th style="width:60px;">Prod</th>
+              <th style="width:100px;">Langfuse</th>
+            </tr>
+          </thead>
+          <tbody id="tracesBody"></tbody>
         </table>
+        <div class="empty-state" id="emptyState" style="display:none;">
+          <div class="icon">&#128200;</div>
+          <p>No traces yet. Start a conversation to see evaluation data.</p>
+        </div>
+      </div>
     </div>
 
-    <script>
-        let chart = null;
+    <!-- Detail Panel -->
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-header">
+        <h3>Trace Detail</h3>
+        <button class="detail-close" onclick="closeDetail()">&times;</button>
+      </div>
+      <div class="detail-body" id="detailBody"></div>
+    </div>
+  </div>
 
-        function scoreClass(score) {
-            if (score >= 0.7) return 'score-high';
-            if (score >= 0.4) return 'score-mid';
-            return 'score-low';
-        }
+  <!-- ══════ Metrics Page ══════ -->
+  <div class="page" id="page-metrics">
+    <div class="page-header">
+      <h2>Metrics Overview</h2>
+      <p>Aggregated evaluation metrics and trends</p>
+    </div>
 
-        function formatTime(isoStr) {
-            const d = new Date(isoStr);
-            return d.toLocaleTimeString();
-        }
+    <!-- New Metrics (v2.0) -->
+    <div class="traces-section" style="margin-bottom:20px;">
+      <div class="traces-header">
+        <h3><span class="badge badge-green" style="font-size:11px;margin-right:8px;vertical-align:middle;">v2.0</span> New Metrics</h3>
+        <span style="font-size:12px;color:var(--text-muted);">Algorithmic &amp; LLM-based evaluation</span>
+      </div>
+      <div id="newMetricsBody" style="padding:0;">
+        <p style="color:var(--text-muted);padding:20px;">Loading...</p>
+      </div>
+    </div>
 
-        async function loadData() {
-            try {
-                const resp = await fetch('/api/evaluations?limit=50');
-                const data = await resp.json();
-                const { evaluations, summary } = data;
+    <!-- Legacy Metrics -->
+    <div class="traces-section">
+      <div class="traces-header">
+        <h3><span class="badge badge-gray" style="font-size:11px;margin-right:8px;vertical-align:middle;">v1.0</span> Legacy Metrics</h3>
+        <span style="font-size:12px;color:var(--text-muted);">LLM-as-a-Judge with structured rubric</span>
+      </div>
+      <div id="legacyMetricsBody" style="padding:0;">
+        <p style="color:var(--text-muted);padding:20px;">Loading...</p>
+      </div>
+    </div>
+  </div>
 
-                // Update time
-                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+</main>
 
-                // Summary cards
-                document.getElementById('totalEvals').textContent = summary.total;
-                document.getElementById('avgFaith').textContent = summary.avg_faithfulness.toFixed(2);
-                document.getElementById('avgRelevancy').textContent = summary.avg_answer_relevancy.toFixed(2);
-                document.getElementById('passRate').textContent = summary.pass_rate_faithfulness + '%';
+<script>
+// ══════════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════════
+let allEvaluations = [];
 
-                // Color code average scores
-                const avgF = document.getElementById('avgFaith');
-                avgF.className = 'value ' + (summary.avg_faithfulness >= 0.7 ? 'green' : summary.avg_faithfulness >= 0.4 ? 'yellow' : 'red');
-                const avgR = document.getElementById('avgRelevancy');
-                avgR.className = 'value ' + (summary.avg_answer_relevancy >= 0.7 ? 'green' : summary.avg_answer_relevancy >= 0.4 ? 'yellow' : 'red');
+// ══════════════════════════════════════════════════
+// Navigation
+// ══════════════════════════════════════════════════
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('page-' + item.dataset.page).classList.add('active');
 
-                // Trend chart
-                updateChart(summary.trend);
+    if (item.dataset.page === 'metrics') {
+      loadData();  // refresh metrics when switching tab
+    }
+  });
+});
 
-                // Table
-                const tbody = document.getElementById('evalTableBody');
-                tbody.innerHTML = '';
-                evaluations.forEach(e => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${formatTime(e.timestamp)}</td>
-                        <td>${e.question}</td>
-                        <td><span class="score-badge ${scoreClass(e.faithfulness)}">${e.faithfulness.toFixed(2)}</span></td>
-                        <td><span class="score-badge ${scoreClass(e.answer_relevancy)}">${e.answer_relevancy.toFixed(2)}</span></td>
-                        <td>${e.product_count}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+// ══════════════════════════════════════════════════
+// Score helpers
+// ══════════════════════════════════════════════════
+function badgeClass(val, threshold) {
+  if (val >= threshold) return 'badge-green';
+  if (val >= threshold * 0.7) return 'badge-yellow';
+  return 'badge-red';
+}
+function scoreClass(val, threshold) {
+  if (val >= threshold) return 'score-pass';
+  if (val >= threshold * 0.7) return 'score-warn';
+  return 'score-fail';
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
 
-            } catch (err) {
-                console.error('Failed to load evaluation data:', err);
-            }
-        }
+// ══════════════════════════════════════════════════
+// Load Data
+// ══════════════════════════════════════════════════
+async function loadData() {
+  try {
+    const resp = await fetch('/api/evaluations?limit=100');
+    const data = await resp.json();
+    allEvaluations = data.evaluations || [];
+    const summary = data.summary || {};
 
-        function updateChart(trendData) {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (chart) { chart.destroy(); }
+    // Update summary cards
+    document.getElementById('totalEvals').textContent = summary.total || 0;
+    document.getElementById('traceCount').textContent = (summary.total || 0) + ' records';
 
-            if (!trendData || trendData.length === 0) {
-                chart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: [],
-                        datasets: [
-                            { label: 'Faithfulness', data: [], borderColor: '#22c55e', tension: 0.3 },
-                            { label: 'Answer Relevancy', data: [], borderColor: '#667eea', tension: 0.3 },
-                        ]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        scales: { y: { min: 0, max: 1 } },
-                        plugins: { legend: { position: 'bottom' } }
-                    }
-                });
-                return;
-            }
+    const asp = document.getElementById('avgSearchPrecision');
+    asp.textContent = (summary.avg_search_precision || 0).toFixed(2);
+    asp.className = 'value ' + ((summary.avg_search_precision || 0) >= 0.7 ? 'green' : 'yellow');
+    // Compute total tokens from all evaluations
+    var totalTokens = 0;
+    for (var idx = 0; idx < allEvaluations.length; idx++) {
+      totalTokens += allEvaluations[idx].total_tokens || 0;
+    }
+    var ttEl = document.getElementById('totalTokens');
+    ttEl.textContent = totalTokens.toLocaleString();
+    ttEl.className = 'value green';
+    ttEl.style.fontSize = '28px';
 
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: trendData.map(d => '#' + d.seq),
-                    datasets: [
-                        {
-                            label: 'Faithfulness',
-                            data: trendData.map(d => d.faithfulness),
-                            borderColor: '#22c55e',
-                            backgroundColor: 'rgba(34,197,94,0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 4,
-                        },
-                        {
-                            label: 'Answer Relevancy',
-                            data: trendData.map(d => d.answer_relevancy),
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102,126,234,0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 4,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { min: 0, max: 1, ticks: { stepSize: 0.2 } }
-                    },
-                    plugins: {
-                        legend: { position: 'bottom' }
-                    }
-                }
-            });
-        }
 
-        // Auto-refresh every 10 seconds
-        loadData();
-        setInterval(loadData, 10000);
-    </script>
+
+    // Render traces table
+    renderTraces(allEvaluations);
+
+    if (document.getElementById('page-metrics').classList.contains('active')) {
+      updateMetricsSummary(summary);
+    }
+
+  } catch (err) {
+    console.error('Failed to load data:', err);
+    document.getElementById('tracesBody').innerHTML =
+      `<tr><td colspan="9" style="text-align:center;color:var(--red);padding:30px;">Failed to load data: ${err.message}</td></tr>`;
+  }
+}
+
+// ══════════════════════════════════════════════════
+// Render Traces Table
+// ══════════════════════════════════════════════════
+function renderTraces(evals) {
+  const tbody = document.getElementById('tracesBody');
+  const empty = document.getElementById('emptyState');
+
+  if (!evals || evals.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = evals.map((e, i) => {
+    const sp = e.search_precision ?? 0;
+    const sc = e.source_coverage ?? 0;
+    const ra = e.response_accuracy ?? 0;
+    const action = e.action || '-';
+    const traceId = e.trace_id || '';
+    const langfuseUrl = traceId
+      ? 'https://us.cloud.langfuse.com/trace/' + traceId
+      : null;
+    const tokens = e.total_tokens || '-';
+
+    var row = '<tr onclick="showDetail(' + i + ')">';
+    row += '<td style="white-space:nowrap;font-size:12px;color:var(--text-secondary);">' + fmtTime(e.timestamp) + '</td>';
+    row += '<td><span class="badge badge-green" style="font-size:11px;text-transform:capitalize;">' + action + '</span></td>';
+    row += '<td><div class="truncate">' + (e.question || '-') + '</div></td>';
+    row += '<td class="score-cell ' + scoreClass(sp, 0.7) + '">' + sp.toFixed(2) + '</td>';
+    row += '<td class="score-cell ' + scoreClass(sc, 0.5) + '">' + sc.toFixed(2) + '</td>';
+    row += '<td class="score-cell ' + scoreClass(ra, 0.9) + '">' + ra.toFixed(2) + '</td>';
+    row += '<td style="text-align:center;font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums;">' + tokens + '</td>';
+    row += '<td style="text-align:center;">' + (e.product_count ?? 0) + '</td>';
+    if (langfuseUrl) {
+      row += '<td><a class="trace-link" href="' + langfuseUrl + '" target="_blank" onclick="event.stopPropagation();">Open </a></td>';
+    } else {
+      row += '<td>-</td>';
+    }
+    row += '</tr>';
+    return row;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// Detail Panel
+// ══════════════════════════════════════════════════
+function showDetail(index) {
+  const e = allEvaluations[index];
+  if (!e) return;
+
+  const panel = document.getElementById('detailPanel');
+  const body = document.getElementById('detailBody');
+  const langfuseUrl = e.trace_id ? `https://us.cloud.langfuse.com/trace/${e.trace_id}` : null;
+
+  body.innerHTML = `
+    <div class="field">
+      <div class="field-label">Timestamp</div>
+      <div class="field-value">${fmtDate(e.timestamp)}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">User Query</div>
+      <div class="field-value">${e.question || '—'}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Assistant Response</div>
+      <div class="field-value"><pre>${e.answer || '—'}</pre></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Action</div>
+      <div class="field-value"><span class="badge ${badgeClass(1, 1)}">${e.action || '—'}</span></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Products Returned</div>
+      <div class="field-value">${e.product_count ?? 0} product(s) from sources: ${(e.sources && e.sources.length) ? e.sources.join(', ') : 'none'}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Token Usage</div>
+      <div class="field-value" style="font-size:13px;">
+        ${e.total_tokens ? 'Prompt: ' + (e.prompt_tokens || 0) + ' | Completion: ' + (e.completion_tokens || 0) + ' | Total: <strong>' + e.total_tokens + '</strong> tokens' : 'Not recorded (pre-v2.1 data)'}
+      </div>
+    </div>
+    <div class="detail-scores">
+      <div class="detail-score">
+        <div class="metric">Search Precision</div>
+        <div class="value ${scoreClass(e.search_precision, 0.7)}">${(e.search_precision ?? 0).toFixed(2)}</div>
+      </div>
+      <div class="detail-score">
+        <div class="metric">Source Coverage</div>
+        <div class="value ${scoreClass(e.source_coverage, 0.5)}">${(e.source_coverage ?? 0).toFixed(2)}</div>
+      </div>
+      <div class="detail-score">
+        <div class="metric">Response Accuracy</div>
+        <div class="value ${scoreClass(e.response_accuracy, 0.9)}">${(e.response_accuracy ?? 0).toFixed(2)}</div>
+      </div>
+    </div>
+    ${langfuseUrl ? `
+    <div class="field" style="margin-top:16px;">
+      <div class="field-label">Langfuse Trace</div>
+      <div class="field-value"><a href="${langfuseUrl}" target="_blank" class="trace-link" style="font-size:14px;">Open in Langfuse &nearr;</a> <span style="font-size:12px;color:var(--text-muted);">(${e.trace_id})</span></div>
+    </div>` : ''}
+  `;
+  panel.classList.add('open');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════
+// Metrics Summary — two clean lists
+// ══════════════════════════════════════════════════
+function updateMetricsSummary(summary) {
+  const newBody = document.getElementById('newMetricsBody');
+  const legacyBody = document.getElementById('legacyMetricsBody');
+
+  if (!summary || summary.total === 0) {
+    const empty = '<div class="empty-state" style="display:block;"><div class="icon">&#128200;</div><p>No data yet. Send some messages to see metrics.</p></div>';
+    newBody.innerHTML = empty;
+    legacyBody.innerHTML = empty;
+    return;
+  }
+
+  // New Metrics list
+  newBody.innerHTML = renderMetricList([
+    { key: 'search_precision', label: 'Search Precision', avg: summary.avg_search_precision, pass: summary.pass_rate_search_precision, desc: 'Keyword overlap between query and returned products' },
+    { key: 'source_coverage', label: 'Source Coverage', avg: summary.avg_source_coverage, pass: summary.pass_rate_source_coverage, desc: 'Unique data sources used / total active sources' },
+    { key: 'response_accuracy', label: 'Response Accuracy', avg: summary.avg_response_accuracy, pass: summary.pass_rate_response_accuracy, desc: 'Factual claims verified against product data via LLM' },
+  ]);
+
+  // Legacy Metrics list
+  legacyBody.innerHTML = renderMetricList([
+    { key: 'faithfulness', label: 'Faithfulness', avg: summary.avg_faithfulness, pass: summary.pass_rate_faithfulness, desc: 'Does the AI avoid fabricating details not in product data?' },
+    { key: 'answer_relevancy', label: 'Answer Relevancy', avg: summary.avg_answer_relevancy, pass: summary.pass_rate_answer_relevancy, desc: 'Does the response directly address what the user asked?' },
+    { key: 'context_recall', label: 'Context Recall', avg: summary.avg_context_recall, pass: summary.pass_rate_context_recall, desc: 'What fraction of available product info was reflected?' },
+  ]);
+}
+
+function renderMetricList(metrics) {
+  const rows = metrics.map(m => {
+    const color = m.pass >= 70 ? 'var(--green)' : m.pass >= 50 ? 'var(--yellow)' : 'var(--red)';
+    const passColor = m.pass >= 70 ? 'var(--green)' : m.pass >= 50 ? 'var(--yellow)' : 'var(--red)';
+    return `
+      <div style="display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="flex:0 0 24px;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};"></span>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;">${m.label}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${m.desc}</div>
+        </div>
+        <div style="flex:0 0 80px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:${color};">${m.avg.toFixed(2)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">avg</div>
+        </div>
+        <div style="flex:0 0 80px;text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:${passColor};">${m.pass}%</div>
+          <div style="font-size:11px;color:var(--text-muted);">pass rate</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th style="width:24px;"></th>
+          <th>Metric</th>
+          <th style="width:80px;text-align:center;">Average</th>
+          <th style="width:80px;text-align:center;">Pass Rate</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);text-align:right;">
+      Based on <strong>${allEvaluations.length}</strong> traces
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════
+loadData();
+setInterval(loadData, 15000);
+</script>
 </body>
 </html>

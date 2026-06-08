@@ -21,9 +21,9 @@ from models.schemas import ChatRequest, ChatResponse, PaymentRequest, PaymentRes
 from agents.chat_agent import ChatAgent
 from tools.search import get_product_by_id, search_products
 from tools.payment import create_payment_link
-from langfuse_setup import get_langfuse, create_trace, update_trace_with_score
+from langfuse_setup import create_trace_api, post_score_via_api
 from evaluator import evaluate_response, get_evaluation_summary
-from evaluation_store import add_evaluation, get_evaluations, get_summary
+from evaluation_store import add_evaluation, get_evaluations, get_summary, get_evaluation_by_trace
 
 app = FastAPI(title="Commerce Agents", version="1.0.0")
 
@@ -39,8 +39,7 @@ app.add_middleware(
 # Store active sessions in memory
 sessions: dict[str, dict] = {}
 
-# Initialize Langfuse
-langfuse = get_langfuse()
+# Langfuse observability via REST API (bypasses SDK v2.55.0 bugs)
 
 
 @app.get("/health")
@@ -56,10 +55,12 @@ async def chat(request: ChatRequest):
 
     Flow:
     1. Create/get session
-    2. Create Langfuse trace
-    3. ChatAgent processes the message (LLM intent understanding -> product search -> reply generation)
-    4. Record trace information
-    5. Return response
+    2. Process message via ChatAgent (LLM intent -> product search -> reply)
+    3. Create Langfuse trace (via REST API, bypassing SDK v2.55.0 bugs)
+    4. Evaluate response (Faithfulness + Answer Relevancy)
+    5. Push scores to Langfuse (via REST API)
+    6. Store in local evaluation dashboard
+    7. Return response
     """
     # Step 1: Session management
     session_id = request.session_id or str(uuid.uuid4())
@@ -69,66 +70,74 @@ async def chat(request: ChatRequest):
             "history": [],
         }
 
-    # Step 2: Create Langfuse trace
-    trace = create_trace(session_id, request.message)
-
     try:
-        # Step 3: ChatAgent processing
+        # Step 2: Process message
         agent = sessions[session_id]["agent"]
         result = await agent.process_message(request.message)
 
-        # Step 4: Record trace — avoid trace.span() as it creates broken observation IDs
-        # in Langfuse SDK v2.55.0 that cause "Observation not found" in the UI.
-        # Metadata is embedded directly in the trace instead.
+        # Step 3: Create Langfuse trace via REST API (includes output + metadata
+        # in one call, because Langfuse Public API does not support PATCH updates)
         products = result.get("products", [])
         sources_used = list(set(p.source for p in products))
         source_breakdown: dict = {}
         for p in products:
             source_breakdown[p.source] = source_breakdown.get(p.source, 0) + 1
 
-        trace.update(
+        trace_id = await create_trace_api(
+            session_id=session_id,
+            user_message=request.message,
             output=result["reply"],
             metadata={
                 "action": result.get("action"),
                 "product_count": len(products),
                 "sources": sources_used,
                 "source_breakdown": source_breakdown,
-            }
+            },
+            usage=result.get("usage"),
         )
 
-        # Step 5: Evaluate (async, non-blocking)
+        # Step 4: Evaluate (async)
         try:
-            contexts = [f"{p.title}: {p.description}" for p in products]
             scores = await evaluate_response(
                 question=request.message,
                 answer=result["reply"],
-                contexts=contexts,
+                products=products,
+                action=result.get("action", ""),
             )
-            # Push scores to Langfuse via trace.score() — links score to trace natively
-            for metric, score in scores.items():
-                print(f"[Main] Recording score to Langfuse: {metric}={score} (trace_id={trace.id})", flush=True)
-                trace.score(
-                    name=metric,
-                    value=score,
-                )
-            # Also store in local memory for real-time dashboard
+            # Push scores to Langfuse via REST API
+            if trace_id:
+                for metric, score in scores.items():
+                    print(f"[Main] Recording score to Langfuse: {metric}={score} (trace_id={trace_id[:12]}...)", flush=True)
+                    await post_score_via_api(
+                        trace_id=trace_id,
+                        name=metric,
+                        value=score,
+                    )
+            # Store in local evaluation dashboard
             add_evaluation(
                 question=request.message,
                 answer=result["reply"],
+                search_precision=scores.get("search_precision", 0.0),
+                source_coverage=scores.get("source_coverage", 0.0),
+                response_accuracy=scores.get("response_accuracy", 0.0),
                 faithfulness=scores.get("faithfulness", 0.0),
                 answer_relevancy=scores.get("answer_relevancy", 0.0),
+                context_recall=scores.get("context_recall", 0.0),
                 product_count=len(products),
+                sources=sources_used,
+                trace_id=trace_id or "",
+                action=result.get("action", ""),
+                prompt_tokens=(result.get("usage") or {}).get("prompt_tokens", 0),
+                completion_tokens=(result.get("usage") or {}).get("completion_tokens", 0),
+                total_tokens=(result.get("usage") or {}).get("total_tokens", 0),
             )
             print(f"[Evaluation] {get_evaluation_summary(scores)}", flush=True)
         except Exception as eval_err:
             print(f"[Evaluation] Failed: {eval_err}", flush=True)
             import traceback
             traceback.print_exc()
-        finally:
-            # Single flush: trace + scores sent together in one batch
-            langfuse.flush()
 
-        # Step 6: Return response
+        # Step 7: Return response
         return ChatResponse(
             reply=result["reply"],
             products=result.get("products", []),
@@ -136,8 +145,15 @@ async def chat(request: ChatRequest):
         )
 
     except Exception as e:
-        trace.update(output=f"Error: {str(e)}")
-        langfuse.flush()  # Ensure errors are also recorded
+        # Try to record error in Langfuse
+        try:
+            await create_trace_api(
+                session_id=session_id,
+                user_message=request.message,
+                output=f"Error: {str(e)}",
+            )
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -186,6 +202,15 @@ async def get_evaluation_data(limit: int = 50):
         "evaluations": get_evaluations(limit=limit),
         "summary": get_summary(),
     }
+
+
+@app.get("/api/evaluations/{trace_id}")
+async def get_evaluation_detail(trace_id: str):
+    """API: Get a single evaluation by trace ID."""
+    eval_data = get_evaluation_by_trace(trace_id)
+    if not eval_data:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    return eval_data
 
 
 @app.get("/", response_class=HTMLResponse)

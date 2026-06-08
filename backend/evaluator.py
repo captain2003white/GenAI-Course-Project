@@ -1,21 +1,25 @@
 """
-Evaluation module — LLM-as-a-Judge
+Evaluation module — six metrics in two groups.
 
-Computes Faithfulness and Answer Relevancy scores using DeepSeek as the evaluator LLM.
-Mirrors Ragas methodology but avoids dependency conflicts.
+New Metrics (v2.0):
+1. Search Precision (0.0-1.0) — keyword overlap, pure algorithmic
+2. Source Coverage    (0.0-1.0) — unique sources / total registered
+3. Response Accuracy  (0.0-1.0) — claim extraction + verification
 
-Metrics:
-- Faithfulness: Is the answer grounded in the retrieved product info? (0.0 - 1.0)
-- Answer Relevancy: Is the answer relevant to the user's question? (0.0 - 1.0)
+Legacy Metrics (preserved for comparison, re-implemented with real logic):
+4. Faithfulness      (0.0-1.0) — does the AI fabricate details not in product data?
+5. Answer Relevancy  (0.0-1.0) — does the response directly address the user's question?
+6. Context Recall    (0.0-1.0) — what fraction of available product info was reflected?
 """
 
 import os
 import json
 import re
-import sys
-from typing import List
+from typing import List, Optional, Set
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+
+from models.schemas import Product
 
 load_dotenv()
 
@@ -25,124 +29,355 @@ client = AsyncOpenAI(
 )
 MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
-EVALUATION_SYSTEM_PROMPT = """You are an expert evaluator for AI shopping assistants.
-Rate the assistant's response on two metrics from 0.0 to 1.0:
+# ── Stop words for keyword extraction ──
+_STOP_WORDS: Set[str] = {
+    "find", "me", "a", "an", "the", "for", "some", "i", "want",
+    "looking", "need", "help", "get", "show", "tell", "about",
+    "with", "and", "or", "in", "on", "at", "to", "is", "are",
+    "please", "can", "could", "would", "do", "does", "has", "have",
+    "this", "that", "these", "those", "it", "its", "my", "your",
+    "cheap", "good", "nice", "best", "top", "great", "awesome",
+    "any", "all", "very", "just", "also", "than", "then", "but",
+}
 
-1. faithfulness: Does the response ONLY contain information that can be verified from the provided product context?
-   - 1.0 = perfectly faithful, no invented information
-   - 0.0 = completely made up, information not in context
-
-2. answer_relevancy: Does the response actually address what the user asked?
-   - 1.0 = perfectly relevant and complete
-   - 0.0 = completely irrelevant
-
-Return a JSON object with both scores and a brief reason."""
+# ── Total active data sources (for Source Coverage) ──
+TOTAL_ACTIVE_SOURCES = 3  # FakeStore + DummyJSON + Platzi
 
 
 async def evaluate_response(
     question: str,
     answer: str,
-    contexts: List[str],
+    products: List[Product],
+    action: str = "",
 ) -> dict:
     """
-    Evaluate a single chat interaction using LLM-as-a-Judge.
+    Evaluate a single chat interaction with six metrics.
 
-    Uses DeepSeek to compute Faithfulness and Answer Relevancy scores.
-    These match the Ragas methodology conceptually.
+    Search Precision only applies to "search" actions — for chat/compare/buy/show
+    it is set to 0.0 since no keyword-based search was performed.
+
+    Returns:
+        {
+            "search_precision": float (0.0-1.0),
+            "source_coverage": float (0.0-1.0),
+            "response_accuracy": float (0.0-1.0),
+            "faithfulness": float (0.0-1.0),
+            "answer_relevancy": float (0.0-1.0),
+            "context_recall": float (0.0-1.0),
+        }
     """
-    if not contexts:
-        contexts = ["No products were retrieved for this query."]
+    # ── Build product context for LLM-based metrics ──
+    has_product_context = len(products) > 0
+    if has_product_context:
+        context_texts = [f"{p.title}: {p.description}" for p in products[:5]]
+        context_text = "\n".join(f"- {c}" for c in context_texts)
+    else:
+        context_text = ""
 
-    context_text = "\n".join(f"- {c}" for c in contexts[:5])
+    # ── Metric 1: Search Precision (only for "search" actions) ──
+    if action == "search":
+        search_precision = _calculate_search_precision(question, products)
+        print(f"[Evaluator] Search Precision: {len(products)} products, "
+              f"keywords=[{_extract_keywords(question)}] -> {search_precision:.2f}", flush=True)
+    else:
+        search_precision = 0.0
+        print(f"[Evaluator] Search Precision: skipped (action={action}) -> 0.0", flush=True)
 
-    user_prompt = f"""User question: {question}
-Assistant response: {answer}
+    # ── Metric 2: Source Coverage ──
+    source_coverage = _calculate_source_coverage(products)
+    print(f"[Evaluator] Source Coverage: {source_coverage:.2f} "
+          f"(sources used: {set(p.source for p in products)})", flush=True)
 
-Retrieved product context:
-{context_text}
+    # ── Metric 3: Response Accuracy ──
+    if has_product_context:
+        response_accuracy = await _evaluate_response_accuracy(answer, context_text)
+    else:
+        response_accuracy = 1.0  # No products to verify against
+        print(f"[Evaluator] No products -- Response Accuracy defaulted to 1.0", flush=True)
 
-Evaluate this interaction. Return JSON only:
-{{"faithfulness": 0.0-1.0, "answer_relevancy": 0.0-1.0, "reason": "brief explanation"}}"""
+    # ── Legacy Metrics: Faithfulness, Answer Relevancy, Context Recall ──
+    legacy = await _calculate_legacy_metrics(question, answer, context_text if has_product_context else "No products retrieved.")
+
+    scores = {
+        "search_precision": round(search_precision, 2),
+        "source_coverage": round(source_coverage, 2),
+        "response_accuracy": round(response_accuracy, 2),
+        "faithfulness": round(legacy["faithfulness"], 2),
+        "answer_relevancy": round(legacy["answer_relevancy"], 2),
+        "context_recall": round(legacy["context_recall"], 2),
+    }
+    print(f"[Evaluator] Scores: {scores}", flush=True)
+    return scores
+
+
+# ═══════════════════════════════════════════════════════════════
+# Metric 1: Search Precision — keyword overlap
+# ═══════════════════════════════════════════════════════════════
+
+def _extract_keywords(text: str) -> List[str]:
+    """Extract meaningful keywords from user query."""
+    words = text.lower().split()
+    return [w.strip(".,!?;:'\"") for w in words
+            if w.strip(".,!?;:'\"") not in _STOP_WORDS
+            and len(w.strip(".,!?;:'\"")) > 1]
+
+
+def _calculate_search_precision(query: str, products: List[Product]) -> float:
+    """
+    Keyword-based search precision.
+
+    For each returned product, check if any of the query's meaningful
+    keywords appear in the product's title or category.
+    Score = matching_products / total_products.
+
+    Completely objective — no LLM calls.
+    """
+    keywords = _extract_keywords(query)
+
+    if not keywords or not products:
+        return 0.0
+
+    relevant_count = 0
+    for p in products:
+        title_lower = p.title.lower()
+        category_lower = p.category.lower()
+        # Check if any query keyword appears in title or category
+        for kw in keywords:
+            if kw in title_lower or kw in category_lower:
+                relevant_count += 1
+                break
+
+    precision = relevant_count / len(products)
+
+    # Print per-product relevance for debugging
+    for p in products:
+        title_lower = p.title.lower()
+        matches = [kw for kw in keywords if kw in title_lower or kw in p.category.lower()]
+        status = "[OK]" if matches else "[--]"
+        print(f"  [SearchPrecision] {status} '{p.title[:50]}...' -> matches: {matches}", flush=True)
+
+    print(f"  [SearchPrecision] {relevant_count}/{len(products)} relevant = {precision:.2f}", flush=True)
+    return precision
+
+
+# ═══════════════════════════════════════════════════════════════
+# Metric 2: Source Coverage — multi-source utilization
+# ═══════════════════════════════════════════════════════════════
+
+def _calculate_source_coverage(products: List[Product]) -> float:
+    """
+    What fraction of active data sources contributed to the results?
+
+    Coverage = unique_sources_used / TOTAL_ACTIVE_SOURCES
+    Capped at 1.0 (can't exceed total available sources).
+    """
+    if not products:
+        return 0.0
+
+    unique_sources = set(p.source for p in products)
+    coverage = len(unique_sources) / TOTAL_ACTIVE_SOURCES
+    return min(1.0, coverage)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Metric 3: Response Accuracy — claim extraction + verification
+# ═══════════════════════════════════════════════════════════════
+
+_ACCURACY_PROMPT = """You are verifying whether a shopping assistant's claims are supported by product data.
+
+Product context:
+{context}
+
+Assistant response:
+"{answer}"
+
+Task:
+1. Extract every factual claim from the assistant's response.
+   A factual claim = verifiable statement about product attributes (price, color, material, size, features, ratings, etc.)
+   Do NOT include: opinions, suggestions, greetings, "here are some products", "I recommend"
+
+2. For each claim, mark SUPPORTED if the product context EXPLICITLY confirms it,
+   or UNSUPPORTED if the context doesn't mention it or contradicts it.
+
+Return JSON only:
+{{
+  "total_claims": <int>,
+  "supported_claims": <int>,
+  "claims": [
+    {{"claim": "...", "supported": true/false, "evidence": "..."}}
+  ]
+}}"""
+
+
+async def _evaluate_response_accuracy(answer: str, context_text: str) -> float:
+    """
+    Response Accuracy via claim extraction + verification.
+
+    Score = supported_claims / total_claims
+    Returns 1.0 if no factual claims to check.
+    """
+    if not answer.strip():
+        return 1.0
 
     try:
-        print(f"[Evaluator] Sending evaluation request to DeepSeek model={MODEL}...", flush=True)
-        response = await client.chat.completions.create(
+        resp = await client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+                {"role": "system", "content": "You extract and verify factual claims. Return JSON only."},
+                {"role": "user", "content": _ACCURACY_PROMPT.format(context=context_text, answer=answer)},
             ],
-            temperature=0.3,  # Lower temperature for more consistent scoring
-            max_tokens=500,
+            temperature=0.1,
+            max_tokens=1500,
         )
-        print(f"[Evaluator] Got response from DeepSeek", flush=True)
-        finish_reason = response.choices[0].finish_reason
-        output = (response.choices[0].message.content or "").strip()
-        print(f"[Evaluator] finish_reason={finish_reason}, response length={len(output)}", flush=True)
+        output = (resp.choices[0].message.content or "").strip()
+        data = _parse_json(output)
 
-        # If response is empty (token limit hit), retry with minimal prompt
-        if not output:
-            print(f"[Evaluator] Empty response, retrying with minimal prompt...", flush=True)
-            minimal_prompt = f"Rate from 0-1:\nfaithfulness= (is answer based on context?)\nanswer_relevancy= (does answer address question?)\n\nQuestion: {question}\nAnswer: {answer}\nContext: {context_text}"
-            response2 = await client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": "Output a JSON object with keys faithfulness (0-1) and answer_relevancy (0-1). No other text."},
-                    {"role": "user", "content": minimal_prompt},
-                ],
-                temperature=0.3,
-                max_tokens=500,
-            )
-            output = (response2.choices[0].message.content or "").strip()
-            print(f"[Evaluator] Retry response length={len(output)}", flush=True)
+        if data and "claims" in data and isinstance(data["claims"], list) and len(data["claims"]) > 0:
+            supported = sum(1 for c in data["claims"] if c.get("supported", False))
+            total = len(data["claims"])
 
-        # Try 1: Parse entire output as JSON directly
-        scores = None
-        try:
-            scores = json.loads(output)
-        except json.JSONDecodeError:
-            # Try 2: Extract JSON from markdown code blocks
-            if "```" in output:
-                # Find content between backticks
-                blocks = re.findall(r'```(?:json)?\s*([\s\S]*?)```', output)
-                for block in blocks:
-                    block = block.strip()
-                    if block.startswith("{"):
-                        try:
-                            scores = json.loads(block)
-                            if scores and "faithfulness" in scores:
-                                break
-                        except json.JSONDecodeError:
-                            continue
+            for i, c in enumerate(data["claims"]):
+                status = "[OK]" if c.get("supported") else "[XX]"
+                print(f"  [Accuracy] {status} ({i+1}/{total}) {c.get('claim', '?')}", flush=True)
 
-            # Try 3: Find a JSON-like object `{...}` anywhere in the text
-            if scores is None:
-                json_match = re.search(r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}', output)
-                if json_match:
-                    try:
-                        scores = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        pass
+            score = supported / total
+            print(f"[Evaluator] Response Accuracy: {supported}/{total} claims verified = {score:.2f}", flush=True)
+            return score
 
-        if scores and "faithfulness" in scores:
-            print(f"[Evaluator] Parsed scores: faithfulness={scores['faithfulness']}, answer_relevancy={scores.get('answer_relevancy', 'N/A')}", flush=True)
-            return {
-                "faithfulness": round(float(scores.get("faithfulness", 0.0)), 2),
-                "answer_relevancy": round(float(scores.get("answer_relevancy", 0.0)), 2),
-            }
-        else:
-            print(f"[Evaluator] Could not extract valid JSON scores from response", flush=True)
-            return {"faithfulness": 0.0, "answer_relevancy": 0.0}
+        print(f"[Evaluator] No factual claims extracted — returning Accuracy=1.0", flush=True)
+        return 1.0
 
     except Exception as e:
-        print(f"[Evaluator] LLM evaluation failed: {e}")
-        return {"faithfulness": 0.0, "answer_relevancy": 0.0}
+        print(f"[Evaluator] Response Accuracy evaluation failed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 0.0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Legacy Metrics: Faithfulness + Answer Relevancy + Context Recall
+# ═══════════════════════════════════════════════════════════════
+
+_LEGACY_METRICS_PROMPT = """Evaluate the shopping assistant's response on three metrics (0.00-1.00).
+
+User Question: {question}
+Assistant Response: "{answer}"
+
+Product Data Available:
+{context}
+
+---
+
+1. faithfulness (0.00-1.00):
+Does the response avoid fabricating details NOT present in the product data?
+- 1.00 = Every claim (price, color, material, features) is explicitly supported
+- 0.67 = Mostly faithful, one minor detail not found in data
+- 0.33 = Several unsupported claims mixed with supported ones
+- 0.00 = Response fabricates details not found anywhere in the product data
+
+2. answer_relevancy (0.00-1.00):
+Does the response directly address what the user asked?
+- 1.00 = Directly answers the query with relevant product information
+- 0.67 = Mostly relevant but includes some unnecessary or off-topic content
+- 0.33 = Partially relevant, misses key aspects of the user's question
+- 0.00 = Response is completely irrelevant to what the user asked
+
+3. context_recall (0.00-1.00):
+What fraction of the available product data did the response actually use?
+- 1.00 = Referenced most products and their key attributes (price, features, etc.)
+- 0.67 = Referenced some products but missed notable attributes
+- 0.33 = Mentioned products without using their specific data
+- 0.00 = Ignored all product information entirely
+
+Return JSON only:
+{{"faithfulness": 0.00, "answer_relevancy": 0.00, "context_recall": 0.00}}"""
+
+
+async def _calculate_legacy_metrics(question: str, answer: str, context_text: str) -> dict:
+    """
+    Single LLM call to compute all three legacy metrics.
+    Uses a detailed rubric to produce differentiated, realistic scores.
+    """
+    try:
+        resp = await client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "You are an expert evaluator for AI shopping assistants. Return JSON only."},
+                {"role": "user", "content": _LEGACY_METRICS_PROMPT.format(
+                    question=question, answer=answer, context=context_text
+                )},
+            ],
+            temperature=0.2,
+            max_tokens=1000,
+        )
+        output = (resp.choices[0].message.content or "").strip()
+        data = _parse_json(output)
+
+        if data and "faithfulness" in data:
+            f = float(data.get("faithfulness", 0.0))
+            a = float(data.get("answer_relevancy", 0.0))
+            c = float(data.get("context_recall", 0.0))
+            f = max(0.0, min(1.0, f))
+            a = max(0.0, min(1.0, a))
+            c = max(0.0, min(1.0, c))
+            print(f"[Legacy] faithfulness={f:.2f}, answer_relevancy={a:.2f}, context_recall={c:.2f}", flush=True)
+            return {"faithfulness": f, "answer_relevancy": a, "context_recall": c}
+
+        print(f"[Legacy] Could not parse LLM output, using defaults", flush=True)
+        return {"faithfulness": 0.5, "answer_relevancy": 0.5, "context_recall": 0.5}
+
+    except Exception as e:
+        print(f"[Legacy] Evaluation failed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return {"faithfulness": 0.0, "answer_relevancy": 0.0, "context_recall": 0.0}
+
+
+# ═══════════════════════════════════════════════════════════════
+# JSON parsing helper
+# ═══════════════════════════════════════════════════════════════
+
+def _parse_json(text: str) -> Optional[dict]:
+    """Robust JSON extraction from LLM output."""
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Try code blocks
+    blocks = re.findall(r'```(?:json)?\s*([\s\S]*?)```', text)
+    for block in blocks:
+        block = block.strip()
+        if block.startswith("{"):
+            try:
+                return json.loads(block)
+            except json.JSONDecodeError:
+                continue
+    # Try any JSON object
+    m = re.search(r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}', text)
+    if m:
+        try:
+            return json.loads(m.group())
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 def get_evaluation_summary(scores: dict) -> str:
-    """Format evaluation scores for display/logging"""
+    """Format evaluation scores for display/logging."""
     parts = []
     for metric, score in scores.items():
-        status = "PASS" if score >= 0.7 else "LOW"
+        # Target by metric
+        targets = {
+            "search_precision": 0.7,
+            "source_coverage": 0.5,
+            "response_accuracy": 0.9,
+            "faithfulness": 0.7,
+            "answer_relevancy": 0.7,
+            "context_recall": 0.5,
+        }
+        target = targets.get(metric, 0.7)
+        status = "PASS" if score >= target else "WARN" if score >= target * 0.7 else "LOW"
         parts.append(f"{metric}={score:.2f} ({status})")
     return " | ".join(parts)
