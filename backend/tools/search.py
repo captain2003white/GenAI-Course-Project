@@ -1,37 +1,21 @@
 """
-Product search tool
+Product search tool — multi-source unified interface.
 
-Fetches product data from the FakeStore API. Supports keyword search and category filtering.
-Free RESTful API - no authentication required.
+This module is the single entry point for ALL product lookups in the system.
+It delegates to the ProductRegistry which queries every registered source
+(FakeStore, DummyJSON, …) in parallel and merges results.
+
+All exported function signatures are kept stable so that callers
+(chat_agent.py, main.py, etc.) do not need to change.
 """
 
-import httpx
-from typing import List, Optional
+from typing import List, Optional, Set
+
 from models.schemas import Product, ProductCategory
+from sources import registry
 
-FAKESTORE_API_BASE = "https://fakestoreapi.com"
-
-
-async def get_all_products() -> List[dict]:
-    """Fetch all products from FakeStore API"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{FAKESTORE_API_BASE}/products")
-        response.raise_for_status()
-        return response.json()
-
-
-async def get_product_by_id(product_id: int) -> Optional[dict]:
-    """Get a single product by ID"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{FAKESTORE_API_BASE}/products/{product_id}")
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        return response.json()
-
-
-# Stop words filtered out from search queries
-_STOP_WORDS = {
+# Stop words kept here for consumers that reference them directly
+_STOP_WORDS: Set[str] = {
     "find", "me", "a", "an", "the", "for", "some", "i", "want",
     "looking", "need", "help", "get", "show",
     "with", "and", "or", "in", "on", "at", "to", "is", "are",
@@ -39,104 +23,76 @@ _STOP_WORDS = {
 }
 
 
-async def search_products(query: str, category: Optional[str] = None, top_k: int = 5) -> List[Product]:
-    """
-    Search products by keyword
+async def search_products(
+    query: str,
+    category: Optional[str] = None,
+    top_k: int = 5,
+) -> List[Product]:
+    """Search all data sources and return merged, sorted results.
 
-    Strategy:
-    - If category specified, filter by category first
-    - Extract keywords from query (removing stop words) and match individually
-    - Sort by match count + rating, return Top-K
-    - If no keywords remain, fall back to category-only search
+    Supports optional category filter (applied post-merge).
+    The category match is flexible — "clothing" matches "men's clothing",
+    "women's clothing" and "clothing".
     """
-    all_products = await get_all_products()
+    # Let the registry handle multi-source search
+    results = await registry.search_merged(query, top_k=top_k * 2 if category else top_k)
 
-    # Filter by category if specified
     if category:
-        filtered = [p for p in all_products if p["category"] == category]
-    else:
-        filtered = all_products
+        cat_lower = category.lower().strip()
+        # Flexible category matching: exact OR partial
+        filtered = [
+            p for p in results
+            if p.category == cat_lower
+            or cat_lower in p.category
+            or p.category in cat_lower
+        ]
+        # Only apply filter if it preserves some results
+        if filtered:
+            results = filtered
+        # If the filter zeroed everything, ignore it (LLM may have guessed wrong)
 
-    # Extract keywords
-    query_lower = query.lower().strip()
-    # First try exact phrase match
-    matched = []
-    for p in filtered:
-        text = (p["title"] + " " + p["description"]).lower()
-        if query_lower in text:
-            matched.append(p)
+    return results[:top_k]
 
-    # If exact match fails, split into individual keywords
-    if not matched:
-        keywords = [w.strip(".,!?;:'\"") for w in query_lower.split()
-                    if w.strip(".,!?;:'\"") not in _STOP_WORDS]
 
-        if keywords:
-            word_scores = {}
-            for p in filtered:
-                text = (p["title"] + " " + p["description"]).lower()
-                hit_count = sum(1 for kw in keywords if kw in text)
-                if hit_count > 0:
-                    word_scores[p["id"]] = hit_count
+async def get_product_by_id(product_id: int) -> Optional[dict]:
+    """Get a single product by ID (dict form, for backward compat).
 
-            # Sort by match count desc, then by rating desc
-            scored = [(p, word_scores.get(p["id"], 0)) for p in filtered if p["id"] in word_scores]
-            scored.sort(key=lambda x: (x[1], x[0]["rating"]["rate"]), reverse=True)
-            matched = [s[0] for s in scored]
-
-    # If no matches, retry without color/attribute modifiers
-    if not matched and keywords:
-        # Color and attribute words that might over-filter
-        _FILTER_WORDS = {
-            "blue", "red", "black", "white", "green", "yellow", "purple",
-            "pink", "orange", "gray", "grey", "brown", "gold", "silver",
-            "cheap", "expensive", "affordable", "budget", "premium",
-            "casual", "formal", "sport", "fashion", "trendy",
-            "light", "dark", "bright",
-        }
-        fallback_kw = [w for w in keywords if w not in _FILTER_WORDS]
-        if fallback_kw and fallback_kw != keywords:
-            for p in filtered:
-                text = (p["title"] + " " + p["description"]).lower()
-                if all(kw in text for kw in fallback_kw):
-                    matched.append(p)
-
-    # Sort by rating and return Top-K
-    matched.sort(key=lambda x: x["rating"]["rate"], reverse=True)
-    return [Product(**p) for p in matched[:top_k]]
+    Tries each registered source until a match is found.
+    Returns a dict matching the Product model fields so that callers
+    like main.py:/buy can do Product(**product).
+    """
+    product = await registry.get_by_id(product_id)
+    if product is None:
+        return None
+    # Backward compat: return as dict so existing Product(**dict) calls work
+    return product.model_dump()
 
 
 async def get_products_by_category(category: str, top_k: int = 10) -> List[Product]:
-    """Get products by category"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{FAKESTORE_API_BASE}/products/category/{category}")
-        response.raise_for_status()
-        products = response.json()
-        return [Product(**p) for p in products[:top_k]]
+    """Get products by category across all sources."""
+    return await registry.get_products_by_category(category, top_k=top_k)
 
 
 def get_display_fields(category: str) -> dict:
-    """
-    Return display field priorities based on product category
+    """Return display field priorities based on product category.
 
-    Core logic for our "different categories, different display" design.
-    Apparel emphasizes appearance, electronics emphasizes specs.
+    Unchanged — still works with the same ProductCategory enum.
     """
     if category == ProductCategory.ELECTRONICS.value:
         return {
             "primary": "image",
             "secondary": ["title", "price", "description"],
-            "highlight": "specs"
+            "highlight": "specs",
         }
-    elif category in [ProductCategory.CLOTHING.value, ProductCategory.JEWELRY.value]:
+    elif category in (ProductCategory.CLOTHING.value, ProductCategory.JEWELRY.value):
         return {
             "primary": "image",
             "secondary": ["title", "price", "color", "material"],
-            "highlight": "appearance"
+            "highlight": "appearance",
         }
     else:
         return {
             "primary": "title",
             "secondary": ["price", "description"],
-            "highlight": "overview"
+            "highlight": "overview",
         }

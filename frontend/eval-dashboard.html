@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation Dashboard — Commerce Agents</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            padding: 24px;
+        }
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; }
+        .last-update { color: #888; font-size: 13px; }
+        .refresh-btn {
+            background: #667eea; color: white; border: none;
+            padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;
+        }
+        .refresh-btn:hover { background: #5a6fd6; }
+
+        /* Summary Cards */
+        .cards {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
+        }
+        .card {
+            background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .card .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+        .card .value.green { color: #22c55e; }
+        .card .value.yellow { color: #eab308; }
+        .card .value.red { color: #ef4444; }
+        .card .sub { font-size: 12px; color: #888; margin-top: 4px; }
+
+        /* Chart */
+        .chart-container {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;
+        }
+        .chart-container h2 { font-size: 16px; margin-bottom: 16px; }
+        .chart-wrapper { height: 250px; }
+
+        /* Table */
+        .table-container {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .table-container h2 { font-size: 16px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #eee; color: #888; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover { background: #f8f9ff; }
+        .score-badge {
+            display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+        }
+        .score-high { background: #dcfce7; color: #166534; }
+        .score-mid { background: #fef9c3; color: #854d0e; }
+        .score-low { background: #fee2e2; color: #991b1b; }
+        .score-unknown { color: #ccc; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>📊 Evaluation Dashboard</h1>
+            <div class="last-update">Last updated: <span id="updateTime">—</span></div>
+        </div>
+        <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="cards" id="summaryCards">
+        <div class="card"><div class="label">Total Evaluations</div><div class="value" id="totalEvals">—</div></div>
+        <div class="card"><div class="label">Avg Faithfulness</div><div class="value" id="avgFaith">—</div><div class="sub">target: ≥ 0.70</div></div>
+        <div class="card"><div class="label">Avg Answer Relevancy</div><div class="value" id="avgRelevancy">—</div><div class="sub">target: ≥ 0.70</div></div>
+        <div class="card"><div class="label">Pass Rate</div><div class="value" id="passRate">—</div><div class="sub">both metrics ≥ 0.7</div></div>
+    </div>
+
+    <!-- Score Trend Chart -->
+    <div class="chart-container">
+        <h2>📈 Score Trend (Last 10)</h2>
+        <div class="chart-wrapper">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Recent Evaluations Table -->
+    <div class="table-container">
+        <h2>📋 Recent Evaluations</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Question</th>
+                    <th>Faithfulness</th>
+                    <th>Answer Relevancy</th>
+                    <th>Products</th>
+                </tr>
+            </thead>
+            <tbody id="evalTableBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let chart = null;
+
+        function scoreClass(score) {
+            if (score >= 0.7) return 'score-high';
+            if (score >= 0.4) return 'score-mid';
+            return 'score-low';
+        }
+
+        function formatTime(isoStr) {
+            const d = new Date(isoStr);
+            return d.toLocaleTimeString();
+        }
+
+        async function loadData() {
+            try {
+                const resp = await fetch('/api/evaluations?limit=50');
+                const data = await resp.json();
+                const { evaluations, summary } = data;
+
+                // Update time
+                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+
+                // Summary cards
+                document.getElementById('totalEvals').textContent = summary.total;
+                document.getElementById('avgFaith').textContent = summary.avg_faithfulness.toFixed(2);
+                document.getElementById('avgRelevancy').textContent = summary.avg_answer_relevancy.toFixed(2);
+                document.getElementById('passRate').textContent = summary.pass_rate_faithfulness + '%';
+
+                // Color code average scores
+                const avgF = document.getElementById('avgFaith');
+                avgF.className = 'value ' + (summary.avg_faithfulness >= 0.7 ? 'green' : summary.avg_faithfulness >= 0.4 ? 'yellow' : 'red');
+                const avgR = document.getElementById('avgRelevancy');
+                avgR.className = 'value ' + (summary.avg_answer_relevancy >= 0.7 ? 'green' : summary.avg_answer_relevancy >= 0.4 ? 'yellow' : 'red');
+
+                // Trend chart
+                updateChart(summary.trend);
+
+                // Table
+                const tbody = document.getElementById('evalTableBody');
+                tbody.innerHTML = '';
+                evaluations.forEach(e => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${formatTime(e.timestamp)}</td>
+                        <td>${e.question}</td>
+                        <td><span class="score-badge ${scoreClass(e.faithfulness)}">${e.faithfulness.toFixed(2)}</span></td>
+                        <td><span class="score-badge ${scoreClass(e.answer_relevancy)}">${e.answer_relevancy.toFixed(2)}</span></td>
+                        <td>${e.product_count}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (err) {
+                console.error('Failed to load evaluation data:', err);
+            }
+        }
+
+        function updateChart(trendData) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (chart) { chart.destroy(); }
+
+            if (!trendData || trendData.length === 0) {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            { label: 'Faithfulness', data: [], borderColor: '#22c55e', tension: 0.3 },
+                            { label: 'Answer Relevancy', data: [], borderColor: '#667eea', tension: 0.3 },
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { min: 0, max: 1 } },
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
+                return;
+            }
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trendData.map(d => '#' + d.seq),
+                    datasets: [
+                        {
+                            label: 'Faithfulness',
+                            data: trendData.map(d => d.faithfulness),
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34,197,94,0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                        },
+                        {
+                            label: 'Answer Relevancy',
+                            data: trendData.map(d => d.answer_relevancy),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102,126,234,0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { min: 0, max: 1, ticks: { stepSize: 0.2 } }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // Auto-refresh every 10 seconds
+        loadData();
+        setInterval(loadData, 10000);
+    </script>
+</body>
+</html>

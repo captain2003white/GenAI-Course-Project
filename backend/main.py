@@ -13,7 +13,9 @@ Start command:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 import uuid
+import os
 
 from models.schemas import ChatRequest, ChatResponse, PaymentRequest, PaymentResponse, Product
 from agents.chat_agent import ChatAgent
@@ -21,6 +23,7 @@ from tools.search import get_product_by_id, search_products
 from tools.payment import create_payment_link
 from langfuse_setup import get_langfuse, create_trace, update_trace_with_score
 from evaluator import evaluate_response, get_evaluation_summary
+from evaluation_store import add_evaluation, get_evaluations, get_summary
 
 app = FastAPI(title="Commerce Agents", version="1.0.0")
 
@@ -74,34 +77,56 @@ async def chat(request: ChatRequest):
         agent = sessions[session_id]["agent"]
         result = await agent.process_message(request.message)
 
-        # Step 4: Record trace
-        trace.update(output=result["reply"])
-        trace.span(
-            name="llm-call",
-            input=request.message,
+        # Step 4: Record trace — avoid trace.span() as it creates broken observation IDs
+        # in Langfuse SDK v2.55.0 that cause "Observation not found" in the UI.
+        # Metadata is embedded directly in the trace instead.
+        products = result.get("products", [])
+        sources_used = list(set(p.source for p in products))
+        source_breakdown: dict = {}
+        for p in products:
+            source_breakdown[p.source] = source_breakdown.get(p.source, 0) + 1
+
+        trace.update(
             output=result["reply"],
             metadata={
                 "action": result.get("action"),
-                "product_count": len(result.get("products", [])),
+                "product_count": len(products),
+                "sources": sources_used,
+                "source_breakdown": source_breakdown,
             }
         )
-        langfuse.flush()
 
-        # Step 5: Evaluate with Ragas (async, non-blocking)
+        # Step 5: Evaluate (async, non-blocking)
         try:
-            contexts = [f"{p.title}: {p.description}" for p in result.get("products", [])]
+            contexts = [f"{p.title}: {p.description}" for p in products]
             scores = await evaluate_response(
                 question=request.message,
                 answer=result["reply"],
                 contexts=contexts,
             )
-            # Push scores to Langfuse trace
+            # Push scores to Langfuse via trace.score() — links score to trace natively
             for metric, score in scores.items():
-                update_trace_with_score(trace, metric, score)
-            langfuse.flush()
-            print(f"[Evaluation] {get_evaluation_summary(scores)}")
+                print(f"[Main] Recording score to Langfuse: {metric}={score} (trace_id={trace.id})", flush=True)
+                trace.score(
+                    name=metric,
+                    value=score,
+                )
+            # Also store in local memory for real-time dashboard
+            add_evaluation(
+                question=request.message,
+                answer=result["reply"],
+                faithfulness=scores.get("faithfulness", 0.0),
+                answer_relevancy=scores.get("answer_relevancy", 0.0),
+                product_count=len(products),
+            )
+            print(f"[Evaluation] {get_evaluation_summary(scores)}", flush=True)
         except Exception as eval_err:
-            print(f"[Evaluation] Failed: {eval_err}")
+            print(f"[Evaluation] Failed: {eval_err}", flush=True)
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Single flush: trace + scores sent together in one batch
+            langfuse.flush()
 
         # Step 6: Return response
         return ChatResponse(
@@ -148,3 +173,36 @@ async def buy(request: PaymentRequest):
         product_name=product_data.title,
         total_amount=product_data.price * request.quantity,
     )
+
+
+# ═══════════════════════════════════════════
+# Evaluation Dashboard
+# ═══════════════════════════════════════════
+
+@app.get("/api/evaluations")
+async def get_evaluation_data(limit: int = 50):
+    """API: Get recent evaluation scores for the dashboard."""
+    return {
+        "evaluations": get_evaluations(limit=limit),
+        "summary": get_summary(),
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    """Main chat interface."""
+    index_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, encoding="utf-8") as f:
+            return f.read()
+    return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+
+
+@app.get("/eval-dashboard", response_class=HTMLResponse)
+async def evaluation_dashboard():
+    """Evaluation Dashboard page — real-time metrics display."""
+    dashboard_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "eval-dashboard.html")
+    if os.path.exists(dashboard_path):
+        with open(dashboard_path, encoding="utf-8") as f:
+            return f.read()
+    return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)

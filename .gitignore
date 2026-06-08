@@ -3,8 +3,12 @@ __pycache__/
 *.pyc
 *.pyo
 venv/
-.env
+agent_env/
 *.egg-info/
+
+# Environment
+.env
+.env.local
 
 # IDE
 .vscode/
@@ -16,3 +20,6 @@ Thumbs.db
 
 # Langfuse debug
 debug_action.json
+
+# Claude memory
+.claude/

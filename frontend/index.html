@@ -4,577 +4,2080 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Commerce Agents — AI Shopping Assistant</title>
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <!-- Font Awesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <style>
         /* ============================================
-           全局样式
+           CSS Variables & Reset
            ============================================ */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --primary: #4F46E5;
+            --primary-dark: #4338CA;
+            --primary-light: #6366F1;
+            --primary-bg: #EEF2FF;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+            --radius-sm: 6px;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            --transition: 0.2s ease;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-800);
             height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
 
         /* ============================================
-           主容器 — 仿 Mac 风格卡片
+           Scrollbar
            ============================================ */
-        .app-container {
-            width: 480px;
-            height: 780px;
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+
+        /* ============================================
+           Layout — Three Panel Flexbox
+           ============================================ */
+        #app {
+            display: flex;
+            height: 100vh;
+            max-width: 1600px;
+            margin: 0 auto;
+            background: var(--gray-100);
+        }
+
+        /* ============================================
+           Sidebar — Session List
+           ============================================ */
+        #sidebar {
+            width: 260px;
+            min-width: 260px;
             background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border-right: 1px solid var(--gray-200);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
-            position: relative;
+            height: 100vh;
         }
 
-        /* ============================================
-           顶部标题栏
-           ============================================ */
-        .header {
-            background: linear-gradient(135deg, #667eea, #764ba2);
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-header .logo {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
-            padding: 20px 24px;
-            text-align: center;
+            font-size: 16px;
             flex-shrink: 0;
         }
 
-        .header h1 {
-            font-size: 18px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
+        .sidebar-header h2 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gray-800);
+            flex: 1;
         }
 
-        .header p {
+        .btn-new-chat {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: var(--primary-bg);
+            color: var(--primary);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition);
+            flex-shrink: 0;
+        }
+        .btn-new-chat:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        #sessionList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .session-item {
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all var(--transition);
+            margin-bottom: 2px;
+            position: relative;
+        }
+        .session-item:hover { background: var(--gray-50); }
+        .session-item.active {
+            background: var(--primary-bg);
+            border-left: 3px solid var(--primary);
+        }
+
+        .session-item .session-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--gray-700);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .session-item .session-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 3px;
+        }
+        .session-item .session-time {
+            font-size: 11px;
+            color: var(--gray-400);
+        }
+        .session-item .session-count {
+            font-size: 11px;
+            color: var(--gray-400);
+        }
+        .session-item .session-delete {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: var(--gray-300);
+            border-radius: 4px;
+            cursor: pointer;
             font-size: 12px;
-            opacity: 0.8;
-            margin-top: 4px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .session-item:hover .session-delete { display: flex; }
+        .session-item .session-delete:hover { color: var(--danger); background: #fee2e2; }
+
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+        .sidebar-footer i { color: var(--warning); }
+        .sidebar-footer .fav-count { font-weight: 600; color: var(--gray-700); }
+
+        .empty-sessions {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--gray-400);
+            font-size: 13px;
+        }
+        .empty-sessions i {
+            font-size: 32px;
+            display: block;
+            margin-bottom: 12px;
+            color: var(--gray-300);
         }
 
         /* ============================================
-           聊天消息区 — 滚动容器
+           Main Content — Chat Area
            ============================================ */
-        .chat-messages {
+        #mainContent {
             flex: 1;
-            overflow-y: auto;
-            padding: 16px 20px;
+            min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            background: #f8f9ff;
+            height: 100vh;
+            background: white;
         }
 
-        /* 消息气泡 */
-        .message {
-            max-width: 85%;
-            padding: 12px 16px;
-            border-radius: 16px;
+        #chatHeader {
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            background: white;
+        }
+
+        #chatHeader .chat-title {
             font-size: 14px;
-            line-height: 1.5;
-            animation: fadeIn 0.3s ease;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        #chatHeader .chat-title i {
+            color: var(--primary);
+            margin-right: 8px;
         }
 
-        @keyframes fadeIn {
+        .btn-clear-chat {
+            border: none;
+            background: transparent;
+            color: var(--gray-400);
+            cursor: pointer;
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: var(--radius);
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-clear-chat:hover {
+            color: var(--danger);
+            background: #fee2e2;
+        }
+
+        /* ============================================
+           Chat Messages
+           ============================================ */
+        #chatMessages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background: var(--gray-50);
+        }
+
+        /* Welcome */
+        .welcome-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--gray-400);
+            margin-top: 40px;
+        }
+        .welcome-message i {
+            font-size: 48px;
+            color: var(--gray-300);
+            display: block;
+            margin-bottom: 16px;
+        }
+        .welcome-message h3 {
+            font-size: 18px;
+            color: var(--gray-600);
+            margin-bottom: 8px;
+        }
+        .welcome-message p {
+            font-size: 14px;
+            color: var(--gray-400);
+            max-width: 360px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Message bubbles */
+        .message {
+            max-width: 80%;
+            padding: 14px 18px;
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            line-height: 1.6;
+            animation: msgIn 0.3s ease;
+            position: relative;
+        }
+        @keyframes msgIn {
             from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
         .message.user {
-            background: #667eea;
+            background: var(--primary);
             color: white;
             align-self: flex-end;
             border-bottom-right-radius: 4px;
         }
+        .message.user::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: -6px;
+            border: 6px solid transparent;
+            border-top-color: var(--primary);
+            border-right-color: var(--primary);
+        }
 
         .message.bot {
             background: white;
-            color: #333;
+            color: var(--gray-800);
             align-self: flex-start;
             border-bottom-left-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            box-shadow: var(--shadow);
+        }
+        .message.bot::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: -6px;
+            border: 6px solid transparent;
+            border-top-color: white;
+            border-left-color: white;
         }
 
-        .message.bot .thinking {
+        /* Bot avatar circle */
+        .message.bot .bot-avatar {
+            display: none;
+        }
+
+        /* Thinking dots */
+        .thinking-dots {
             display: flex;
             gap: 4px;
             padding: 4px 0;
         }
-
-        .message.bot .thinking span {
-            width: 8px;
-            height: 8px;
-            background: #667eea;
+        .thinking-dots span {
+            width: 8px; height: 8px;
+            background: var(--primary);
             border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out both;
+            animation: dotBounce 1.4s infinite ease-in-out both;
         }
-
-        .message.bot .thinking span:nth-child(1) { animation-delay: -0.32s; }
-        .message.bot .thinking span:nth-child(2) { animation-delay: -0.16s; }
-        .message.bot .thinking span:nth-child(3) { animation-delay: 0s; }
-
-        @keyframes bounce {
+        .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes dotBounce {
             0%, 80%, 100% { transform: scale(0); }
             40% { transform: scale(1); }
         }
 
+        /* Markdown content in bot messages */
+        .message.bot p { margin-bottom: 8px; }
+        .message.bot p:last-child { margin-bottom: 0; }
+        .message.bot ul, .message.bot ol { padding-left: 20px; margin-bottom: 8px; }
+        .message.bot li { margin-bottom: 4px; }
+        .message.bot strong { font-weight: 600; color: var(--gray-900); }
+        .message.bot em { font-style: italic; }
+        .message.bot code {
+            background: var(--gray-100);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .message.bot pre {
+            background: var(--gray-800);
+            color: #e2e8f0;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            overflow-x: auto;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .message.bot pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
         /* ============================================
-           商品卡片
+           Inline Product Card (chat flow)
            ============================================ */
-        .product-card {
-            background: white;
-            border-radius: 12px;
-            padding: 12px;
+        .inline-product-card {
             display: flex;
-            gap: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            animation: fadeIn 0.3s ease;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-lg);
+            padding: 12px;
+            gap: 14px;
+            animation: msgIn 0.3s ease;
             align-self: flex-start;
             max-width: 100%;
             width: 100%;
-            transition: transform 0.2s;
+            transition: all var(--transition);
+            cursor: default;
+        }
+        .inline-product-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-md);
         }
 
-        .product-card:hover {
-            transform: translateY(-2px);
-        }
-
-        .product-card img {
-            width: 80px;
-            height: 80px;
+        .inline-product-card .card-img {
+            width: 90px;
+            height: 90px;
             object-fit: contain;
-            border-radius: 8px;
-            background: #f8f8f8;
+            border-radius: var(--radius);
+            background: var(--gray-50);
+            flex-shrink: 0;
+            padding: 4px;
+        }
+        .inline-product-card .card-body {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .inline-product-card .card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-800);
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.3;
+        }
+        .inline-product-card .card-tags {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+        .inline-product-card .card-tag {
+            font-size: 10px;
+            font-weight: 500;
+            padding: 1px 8px;
+            border-radius: 10px;
+            background: var(--primary-bg);
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .inline-product-card .card-tag.tag-price {
+            background: var(--success-light);
+            color: #065f46;
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .inline-product-card .card-tag.tag-rating {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+        .inline-product-card .card-tag.tag-source {
+            background: #e0e7ff;
+            color: var(--primary-dark);
+            font-style: italic;
+        }
+        .inline-product-card .card-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--success);
+            margin-top: 4px;
+        }
+        .inline-product-card .card-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .inline-product-card .card-actions button {
+            border: none;
+            padding: 5px 12px;
+            border-radius: var(--radius);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .inline-product-card .btn-fav {
+            background: transparent;
+            color: var(--gray-400);
+            border: 1px solid var(--gray-200) !important;
+        }
+        .inline-product-card .btn-fav:hover { color: var(--warning); border-color: var(--warning) !important; }
+        .inline-product-card .btn-fav.active { color: var(--warning); background: var(--warning-light); border-color: var(--warning) !important; }
+        .inline-product-card .btn-detail {
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+        .inline-product-card .btn-detail:hover { background: var(--primary); color: white; }
+        .inline-product-card .btn-buy {
+            background: var(--success);
+            color: white;
+        }
+        .inline-product-card .btn-buy:hover { background: #059669; }
+        .inline-product-card .btn-buy:disabled { background: var(--gray-300); cursor: not-allowed; }
+        .inline-product-card .btn-site {
+            background: var(--primary);
+            color: white;
+        }
+        .inline-product-card .btn-site:hover { background: var(--primary-dark); }
+
+        /* ============================================
+           Input Area
+           ============================================ */
+        #inputArea {
+            padding: 16px 24px;
+            border-top: 1px solid var(--gray-200);
+            background: white;
             flex-shrink: 0;
         }
 
-        .product-info {
-            flex: 1;
-            min-width: 0;
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
         }
 
-        .product-info .title {
-            font-size: 13px;
+        .input-wrapper textarea {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            resize: none;
+            max-height: 120px;
+            min-height: 48px;
+            line-height: 1.5;
+            transition: border-color var(--transition);
+        }
+        .input-wrapper textarea:focus {
+            border-color: var(--primary);
+        }
+        .input-wrapper textarea::placeholder {
+            color: var(--gray-400);
+        }
+
+        .input-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .input-actions button {
+            height: 48px;
+            border: none;
+            border-radius: var(--radius-lg);
+            font-size: 14px;
             font-weight: 600;
-            color: #333;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-send {
+            width: 48px;
+            background: var(--primary);
+            color: white;
+        }
+        .btn-send:hover { background: var(--primary-dark); }
+        .btn-send:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+        .btn-clear {
+            width: 48px;
+            background: transparent;
+            color: var(--gray-400);
+            border: 1px solid var(--gray-200) !important;
+        }
+        .btn-clear:hover { color: var(--danger); border-color: var(--danger) !important; background: #fee2e2; }
+
+        /* Typing indicator in input */
+        .input-status {
+            font-size: 12px;
+            color: var(--gray-400);
+            margin-bottom: 6px;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+        .input-status.show { display: flex; }
+        .input-status .spinner {
+            width: 12px; height: 12px;
+            border: 2px solid var(--gray-200);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============================================
+           Side Panel — Smart Panel
+           ============================================ */
+        #sidePanel {
+            width: 380px;
+            min-width: 380px;
+            background: white;
+            border-left: 1px solid var(--gray-200);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--gray-200);
+            flex-shrink: 0;
+        }
+        .panel-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        .panel-header h3 i {
+            color: var(--primary);
+            margin-right: 6px;
+        }
+
+        .panel-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--gray-200);
+            flex-shrink: 0;
+        }
+        .panel-tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition);
+            border-bottom: 2px solid transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .panel-tab:hover { color: var(--gray-700); background: var(--gray-50); }
+        .panel-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .panel-tab .badge {
+            background: var(--gray-200);
+            color: var(--gray-600);
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        .panel-tab.active .badge {
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .panel-view { display: none; }
+        .panel-view.active { display: block; }
+
+        /* Empty panel state */
+        .panel-empty {
+            text-align: center;
+            padding: 40px 16px;
+            color: var(--gray-400);
+        }
+        .panel-empty i {
+            font-size: 36px;
+            color: var(--gray-300);
+            display: block;
+            margin-bottom: 12px;
+        }
+        .panel-empty p { font-size: 13px; }
+
+        /* ============================================
+           Product Grid Cards (right panel)
+           ============================================ */
+        .product-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .product-grid-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: all var(--transition);
+        }
+        .product-grid-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-1px);
+        }
+
+        .product-grid-card .grid-img-wrap {
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--gray-50);
+            padding: 12px;
+            position: relative;
+        }
+        .product-grid-card .grid-img-wrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .product-grid-card .grid-img-wrap .fav-btn-panel {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: rgba(255,255,255,0.9);
+            border-radius: 50%;
+            cursor: pointer;
+            color: var(--gray-400);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition);
+            box-shadow: var(--shadow-sm);
+        }
+        .product-grid-card .grid-img-wrap .fav-btn-panel:hover { color: var(--warning); }
+        .product-grid-card .grid-img-wrap .fav-btn-panel.active { color: var(--warning); background: var(--warning-light); }
+
+        .product-grid-card .grid-body {
+            padding: 10px 12px 12px;
+        }
+        .product-grid-card .grid-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-800);
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
             line-height: 1.3;
+            min-height: 30px;
         }
-
-        .product-info .category {
-            font-size: 11px;
-            color: #667eea;
+        .product-grid-card .grid-tags {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
             margin-top: 4px;
-            text-transform: capitalize;
         }
-
-        .product-info .price {
+        .product-grid-card .grid-tag {
+            font-size: 9px;
+            font-weight: 500;
+            padding: 1px 6px;
+            border-radius: 8px;
+            background: var(--primary-bg);
+            color: var(--primary);
+            text-transform: uppercase;
+        }
+        .product-grid-card .grid-tag.tag-price {
+            background: var(--success-light);
+            color: #065f46;
+            font-weight: 700;
+        }
+        .product-grid-card .grid-tag.tag-source {
+            background: #e0e7ff;
+            color: var(--primary-dark);
+            font-style: italic;
+        }
+        .product-grid-card .grid-price {
             font-size: 16px;
             font-weight: 700;
-            color: #e74c3c;
+            color: var(--success);
             margin-top: 4px;
         }
-
-        .product-info .rating {
-            font-size: 12px;
-            color: #f39c12;
-            margin-top: 2px;
-        }
-
-        .product-info .actions {
-            margin-top: 8px;
+        .product-grid-card .grid-actions {
             display: flex;
-            gap: 8px;
+            gap: 4px;
+            margin-top: 8px;
         }
-
-        .btn-buy {
-            background: #667eea;
-            color: white;
+        .product-grid-card .grid-actions button {
+            flex: 1;
             border: none;
-            padding: 6px 16px;
-            border-radius: 8px;
-            font-size: 12px;
+            padding: 5px 0;
+            border-radius: var(--radius);
+            font-size: 10px;
             font-weight: 500;
             cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .btn-buy:hover {
-            background: #5a6fd6;
-        }
-
-        .btn-buy:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        /* ============================================
-           输入区
-           ============================================ */
-        .input-area {
-            padding: 16px 20px;
-            border-top: 1px solid #eee;
-            background: white;
+            transition: all var(--transition);
             display: flex;
-            gap: 10px;
-            flex-shrink: 0;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
         }
-
-        .input-area input {
-            flex: 1;
-            padding: 12px 16px;
-            border: 2px solid #e8e8e8;
-            border-radius: 12px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
+        .product-grid-card .btn-compare {
+            background: var(--gray-100);
+            color: var(--gray-600);
         }
-
-        .input-area input:focus {
-            border-color: #667eea;
-        }
-
-        .input-area button {
-            background: #667eea;
+        .product-grid-card .btn-compare:hover { background: var(--gray-200); }
+        .product-grid-card .btn-compare.active { background: var(--primary-bg); color: var(--primary); }
+        .product-grid-card .btn-buy-grid {
+            background: var(--success);
             color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            white-space: nowrap;
         }
-
-        .input-area button:hover {
-            background: #5a6fd6;
+        .product-grid-card .btn-buy-grid:hover { background: #059669; }
+        .product-grid-card .btn-buy-grid:disabled { background: var(--gray-300); cursor: not-allowed; }
+        .product-grid-card .btn-site-grid {
+            background: var(--primary);
+            color: white;
         }
-
-        .input-area button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
+        .product-grid-card .btn-site-grid:hover { background: var(--primary-dark); }
 
         /* ============================================
-           支付弹窗
+           Payment Modal
            ============================================ */
         .payment-modal {
             display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 100;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
             justify-content: center;
             align-items: center;
         }
-
-        .payment-modal.active {
-            display: flex;
-        }
+        .payment-modal.active { display: flex; }
 
         .payment-content {
             background: white;
-            border-radius: 20px;
+            border-radius: var(--radius-xl);
             padding: 32px;
-            width: 360px;
+            width: 400px;
+            max-width: 90vw;
             text-align: center;
-            animation: fadeIn 0.3s ease;
+            animation: msgIn 0.3s ease;
+            box-shadow: var(--shadow-lg);
         }
-
         .payment-content h2 {
             font-size: 20px;
-            color: #333;
-            margin-bottom: 8px;
+            color: var(--gray-800);
+            margin-bottom: 4px;
         }
-
-        .payment-content p {
+        .payment-content .pay-product-name {
             font-size: 14px;
-            color: #666;
-            margin-bottom: 8px;
+            color: var(--gray-500);
+            margin-bottom: 4px;
         }
-
-        .payment-content .amount {
+        .payment-content .pay-amount {
             font-size: 28px;
             font-weight: 700;
-            color: #667eea;
-            margin: 16px 0;
-        }
-
-        .payment-content .test-card {
-            background: #f8f9ff;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            color: #333;
+            color: var(--primary);
             margin: 12px 0;
         }
-
+        .payment-content .test-card {
+            background: var(--gray-50);
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            color: var(--gray-600);
+            margin: 12px 0;
+            text-align: left;
+            line-height: 1.6;
+        }
         .payment-content .test-card code {
-            background: #e8e8ff;
+            background: var(--primary-bg);
             padding: 2px 8px;
             border-radius: 4px;
-            font-family: monospace;
+            font-family: 'SF Mono', monospace;
             font-size: 13px;
+            color: var(--primary);
         }
-
-        .btn-open-payment {
-            background: #667eea;
+        .btn-pay-stripe {
+            background: var(--primary);
             color: white;
             border: none;
             padding: 12px 24px;
-            border-radius: 12px;
+            border-radius: var(--radius-lg);
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             width: 100%;
-            margin-top: 8px;
+            margin-top: 4px;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
-
-        .btn-open-payment:hover {
-            background: #5a6fd6;
-        }
-
-        .btn-close {
-            background: #f0f0f0;
-            color: #666;
-            border: none;
+        .btn-pay-stripe:hover { background: var(--primary-dark); }
+        .btn-pay-stripe:disabled { background: var(--gray-300); cursor: not-allowed; }
+        .btn-pay-close {
+            background: transparent;
+            color: var(--gray-500);
+            border: 1px solid var(--gray-200);
             padding: 10px 20px;
-            border-radius: 8px;
+            border-radius: var(--radius);
             font-size: 13px;
             cursor: pointer;
             margin-top: 8px;
+            width: 100%;
+            transition: all var(--transition);
         }
-
-        .payment-status {
+        .btn-pay-close:hover { background: var(--gray-50); }
+        .pay-status {
             margin-top: 12px;
-            padding: 12px;
-            border-radius: 8px;
+            padding: 10px 16px;
+            border-radius: var(--radius);
             font-size: 13px;
             display: none;
         }
+        .pay-status.show { display: block; }
+        .pay-status.success { background: var(--success-light); color: #065f46; }
+        .pay-status.error { background: #fee2e2; color: #991b1b; }
 
-        .payment-status.success {
-            display: block;
-            background: #d4edda;
-            color: #155724;
+        /* ============================================
+           Compare View
+           ============================================ */
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .compare-table th, .compare-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--gray-200);
+            text-align: left;
+            vertical-align: top;
+        }
+        .compare-table th {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--gray-500);
+            font-weight: 600;
+            width: 80px;
+        }
+        .compare-table td { color: var(--gray-700); }
+        .compare-table .compare-img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: var(--gray-50);
+        }
+        .compare-table .compare-title {
+            font-weight: 500;
+            font-size: 12px;
+        }
+        .compare-table .compare-price {
+            font-weight: 700;
+            color: var(--success);
         }
 
-        .payment-status.error {
-            display: block;
-            background: #f8d7da;
-            color: #721c24;
+        /* ============================================
+           Toast Notification
+           ============================================ */
+        .toast-container {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .toast {
+            background: var(--gray-800);
+            color: white;
+            padding: 10px 16px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            box-shadow: var(--shadow-lg);
+            animation: toastIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .toast.success { background: #065f46; }
+        .toast.error { background: #991b1b; }
+        .toast.info { background: var(--gray-800); }
+
+        /* ============================================
+           Responsive
+           ============================================ */
+        @media (max-width: 1200px) {
+            #sidePanel {
+                width: 340px;
+                min-width: 340px;
+            }
+        }
+        @media (max-width: 1024px) {
+            #sidePanel {
+                position: fixed;
+                right: -380px;
+                top: 0;
+                z-index: 100;
+                box-shadow: var(--shadow-lg);
+                transition: right 0.3s ease;
+            }
+            #sidePanel.open { right: 0; }
+            .panel-toggle {
+                display: flex !important;
+            }
+        }
+        @media (max-width: 768px) {
+            #sidebar {
+                position: fixed;
+                left: -260px;
+                top: 0;
+                z-index: 100;
+                box-shadow: var(--shadow-lg);
+                transition: left 0.3s ease;
+            }
+            #sidebar.open { left: 0; }
+            .sidebar-toggle {
+                display: flex !important;
+            }
+            .message { max-width: 90%; }
+            .product-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Mobile toggle buttons */
+        .sidebar-toggle, .panel-toggle {
+            display: none;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            border-radius: var(--radius);
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .sidebar-toggle:hover, .panel-toggle:hover {
+            background: var(--gray-200);
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 99;
+        }
+        .overlay.show { display: block; }
+
+        /* Mobile header controls */
+        .mobile-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <!-- 标题 -->
-    <div class="header">
-        <h1>🛍️ Commerce Agents</h1>
-        <p>AI-Powered Shopping Assistant</p>
-    </div>
+<!-- ============================================
+     Toast Container
+     ============================================ -->
+<div class="toast-container" id="toastContainer"></div>
 
-    <!-- 聊天消息区 -->
-    <div class="chat-messages" id="chatMessages">
-        <div class="message bot">
-            Hi! I'm your AI shopping assistant. I can help you find products, compare them, and make purchases. What are you looking for today?
-        </div>
-    </div>
+<!-- ============================================
+     Overlay (mobile)
+     ============================================ -->
+<div class="overlay" id="overlay"></div>
 
-    <!-- 输入区 -->
-    <div class="input-area">
-        <input type="text" id="userInput" placeholder="Search for products..." autofocus>
-        <button id="sendBtn" onclick="sendMessage()">Send</button>
-    </div>
+<!-- ============================================
+     App Shell
+     ============================================ -->
+<div id="app">
 
-    <!-- 支付弹窗 -->
-    <div class="payment-modal" id="paymentModal">
-        <div class="payment-content">
-            <h2>🛒 Confirm Purchase</h2>
-            <p id="paymentProductName"></p>
-            <div class="amount" id="paymentAmount"></div>
-            <div class="test-card">
-                💳 Test Card: <code>4242 4242 4242 4242</code><br>
-                Exp: <code>12/34</code> &nbsp; CVV: <code>123</code>
-            </div>
-            <button class="btn-open-payment" id="payBtn" onclick="openStripePayment()">
-                Pay with Stripe →
+    <!-- ==========================================
+         Sidebar — Session List
+         ========================================== -->
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo"><i class="fas fa-bolt"></i></div>
+            <h2>Commerce</h2>
+            <button class="btn-new-chat" onclick="newSession()" title="New Chat">
+                <i class="fas fa-plus"></i>
             </button>
-            <div class="payment-status" id="paymentStatus"></div>
-            <button class="btn-close" onclick="closePaymentModal()">Cancel</button>
         </div>
+        <div id="sessionList"></div>
+        <div class="sidebar-footer">
+            <i class="fas fa-star"></i>
+            <span>Favorites: <span class="fav-count" id="favCount">0</span></span>
+        </div>
+    </aside>
+
+    <!-- ==========================================
+         Main — Chat Area
+         ========================================== -->
+    <main id="mainContent">
+        <!-- Header -->
+        <div id="chatHeader">
+            <div class="mobile-controls">
+                <button class="sidebar-toggle" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <span class="chat-title">
+                    <i class="fas fa-comment"></i>
+                    <span id="chatTitle">Current Chat</span>
+                </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button class="panel-toggle" onclick="togglePanel()">
+                    <i class="fas fa-shopping-bag"></i>
+                </button>
+                <button class="btn-clear-chat" onclick="clearChat()" title="Clear conversation">
+                    <i class="fas fa-trash-alt"></i> Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="chatMessages">
+            <div class="welcome-message" id="welcomeMessage">
+                <i class="fas fa-robot"></i>
+                <h3>Welcome to Commerce Agents</h3>
+                <p>Your AI-powered shopping assistant. Ask me to find products, compare items, or help you make a purchase.</p>
+                <p style="margin-top:12px;font-size:12px;color:var(--gray-300);">Try: "find me a jacket" or "show me electronics"</p>
+            </div>
+        </div>
+
+        <!-- Input -->
+        <div id="inputArea">
+            <div class="input-status" id="inputStatus">
+                <span class="spinner"></span>
+                <span>AI is thinking...</span>
+            </div>
+            <div class="input-wrapper">
+                <textarea id="userInput" rows="1" placeholder="Search for products..." autofocus></textarea>
+                <div class="input-actions">
+                    <button class="btn-clear" onclick="clearInput()" title="Clear input">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <button class="btn-send" id="sendBtn" onclick="sendMessage()" title="Send">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ==========================================
+         Side Panel — Smart Panel
+         ========================================== -->
+    <aside id="sidePanel">
+        <div class="panel-header">
+            <h3><i class="fas fa-layer-group"></i> Smart Panel</h3>
+        </div>
+        <div class="panel-tabs">
+            <button class="panel-tab active" data-view="products" onclick="switchPanelTab('products')">
+                <i class="fas fa-box"></i> Products <span class="badge" id="productBadge">0</span>
+            </button>
+            <button class="panel-tab" data-view="favorites" onclick="switchPanelTab('favorites')">
+                <i class="fas fa-star"></i> Favorites <span class="badge" id="favBadgePanel">0</span>
+            </button>
+            <button class="panel-tab" data-view="compare" onclick="switchPanelTab('compare')">
+                <i class="fas fa-scale-balanced"></i> Compare <span class="badge" id="compareBadge">0</span>
+            </button>
+        </div>
+        <div class="panel-content">
+
+            <!-- Products View -->
+            <div class="panel-view active" id="panelProducts">
+                <div class="panel-empty" id="panelProductsEmpty">
+                    <i class="fas fa-box-open"></i>
+                    <p>No products yet. Start a conversation to see products here.</p>
+                </div>
+                <div class="product-grid" id="productGrid"></div>
+            </div>
+
+            <!-- Favorites View -->
+            <div class="panel-view" id="panelFavorites">
+                <div class="panel-empty" id="panelFavEmpty">
+                    <i class="fas fa-star"></i>
+                    <p>No favorites yet. Click the <i class="fas fa-star" style="color:var(--gray-300);"></i> icon on any product to save it here.</p>
+                </div>
+                <div class="product-grid" id="favGrid"></div>
+            </div>
+
+            <!-- Compare View -->
+            <div class="panel-view" id="panelCompare">
+                <div class="panel-empty" id="panelCompareEmpty">
+                    <i class="fas fa-scale-balanced"></i>
+                    <p>Add products to compare by clicking <strong>Compare</strong> on product cards.</p>
+                </div>
+                <div id="compareContent"></div>
+            </div>
+
+        </div>
+    </aside>
+
+</div>  <!-- /app -->
+
+<!-- ============================================
+     Payment Modal
+     ============================================ -->
+<div class="payment-modal" id="paymentModal">
+    <div class="payment-content">
+        <h2>🛒 Confirm Purchase</h2>
+        <div class="pay-product-name" id="payProductName"></div>
+        <div class="pay-amount" id="payAmount"></div>
+        <div class="test-card">
+            💳 Test Card: <code>4242 4242 4242 4242</code><br>
+            Exp: <code>12/34</code> &nbsp; CVV: <code>123</code>
+        </div>
+        <button class="btn-pay-stripe" id="payBtn" onclick="openStripePayment()">
+            <i class="fas fa-bolt"></i> Pay with Stripe
+        </button>
+        <div class="pay-status" id="payStatus"></div>
+        <button class="btn-pay-close" onclick="closePaymentModal()">Cancel</button>
     </div>
 </div>
 
 <script>
     // ============================================
-    // 状态管理
+    // Configure marked.js
     // ============================================
-    let sessionId = null;
-    let currentProduct = null;
+    marked.setOptions({
+        breaks: true,
+        gfm: true,
+    });
 
     // ============================================
-    // 发送消息
+    // State
     // ============================================
-    async function sendMessage() {
-        const input = document.getElementById('userInput');
-        const message = input.value.trim();
-        if (!message) return;
+    let currentSessionId = null;
+    let currentProducts = [];        // Products from current chat response
+    let compareList = [];            // Products in compare mode
+    let isProcessing = false;
 
-        // 显示用户消息
-        addMessage(message, 'user');
-        input.value = '';
+    // ============================================
+    // Storage Helpers
+    // ============================================
+    const STORAGE_KEY = 'commerce_agents_data';
 
-        // 显示"正在思考"动画
-        const thinkingId = showThinking();
-
-        // 禁用输入
-        setInputDisabled(true);
-
+    function loadStorage() {
         try {
-            const response = await fetch('http://127.0.0.1:8000/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: message,
-                    session_id: sessionId,
-                }),
-            });
-
-            const data = await response.json();
-            sessionId = data.session_id;
-
-            // 移除"思考中"动画
-            removeThinking(thinkingId);
-
-            // 显示机器人回复
-            addMessage(data.reply, 'bot');
-
-            // 显示商品卡片
-            if (data.products && data.products.length > 0) {
-                data.products.forEach(product => addProductCard(product));
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                const data = JSON.parse(raw);
+                // Ensure all keys exist
+                if (!data.sessions) data.sessions = {};
+                if (!data.favorites) data.favorites = {};
+                return data;
             }
+        } catch (e) { /* ignore corrupt data */ }
+        return { sessions: {}, favorites: {} };
+    }
 
-        } catch (error) {
-            removeThinking(thinkingId);
-            addMessage('Sorry, something went wrong. Please try again.', 'bot');
-        } finally {
-            setInputDisabled(false);
-            document.getElementById('userInput').focus();
+    function saveStorage(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function getSessions() {
+        return loadStorage().sessions;
+    }
+
+    function getFavorites() {
+        return loadStorage().favorites;
+    }
+
+    function saveSession(session) {
+        const data = loadStorage();
+        data.sessions[session.id] = session;
+        saveStorage(data);
+    }
+
+    function deleteSessionById(id) {
+        const data = loadStorage();
+        delete data.sessions[id];
+        // Remove related favorites
+        for (const fid in data.favorites) {
+            if (data.favorites[fid].sessionId === id) {
+                delete data.favorites[fid];
+            }
+        }
+        saveStorage(data);
+    }
+
+    function toggleFavorite(product) {
+        const data = loadStorage();
+        const key = String(product.id);
+        if (data.favorites[key]) {
+            delete data.favorites[key];
+            saveStorage(data);
+            return false; // unfavorited
+        } else {
+            data.favorites[key] = {
+                product: product,
+                sessionId: currentSessionId,
+                savedAt: new Date().toISOString()
+            };
+            saveStorage(data);
+            return true; // favorited
         }
     }
 
+    function isFavorite(productId) {
+        const data = loadStorage();
+        return !!data.favorites[String(productId)];
+    }
+
     // ============================================
-    // 添加消息气泡
+    // Session Management
     // ============================================
-    function addMessage(text, sender) {
+    function generateId() {
+        return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+
+    function newSession() {
+        const id = generateId();
+        const session = {
+            id: id,
+            title: 'New Chat',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messages: []
+        };
+        saveSession(session);
+        loadSession(id);
+        renderSessionList();
+        closeSidebar();
+    }
+
+    function loadSession(id) {
+        const sessions = getSessions();
+        const session = sessions[id];
+        if (!session) return;
+
+        currentSessionId = id;
+        currentProducts = [];
+        compareList = [];
+
+        // Update header
+        document.getElementById('chatTitle').textContent = session.title || 'Current Chat';
+
+        // Render messages
+        renderMessages(session.messages || []);
+
+        // Update sidebar active state
+        document.querySelectorAll('.session-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.sessionId === id);
+        });
+
+        // Update panel tabs
+        switchPanelTab('products');
+
+        // Refresh all panels
+        refreshPanelProducts();
+        refreshPanelFavorites();
+        refreshPanelCompare();
+    }
+
+    function deleteSession(id) {
+        if (id === currentSessionId) {
+            currentSessionId = null;
+            currentProducts = [];
+        }
+        deleteSessionById(id);
+        renderSessionList();
+        if (!currentSessionId) {
+            // Show welcome
+            renderMessages([]);
+            document.getElementById('chatTitle').textContent = 'Current Chat';
+            refreshPanelProducts();
+            refreshPanelFavorites();
+            refreshPanelCompare();
+        } else {
+            loadSession(currentSessionId);
+        }
+    }
+
+    function renderSessionList() {
+        const container = document.getElementById('sessionList');
+        const sessions = getSessions();
+        const entries = Object.entries(sessions);
+
+        if (entries.length === 0) {
+            container.innerHTML = `
+                <div class="empty-sessions">
+                    <i class="fas fa-comments"></i>
+                    <p>No conversations yet.<br>Start a new chat!</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Sort by updatedAt desc
+        entries.sort((a, b) => new Date(b[1].updatedAt) - new Date(a[1].updatedAt));
+
+        container.innerHTML = entries.map(([id, sess]) => {
+            const isActive = id === currentSessionId;
+            const time = formatTime(sess.updatedAt);
+            return `
+                <div class="session-item ${isActive ? 'active' : ''}" data-session-id="${id}" onclick="loadSession('${id}')">
+                    <div class="session-title">${escapeHtml(sess.title || 'New Chat')}</div>
+                    <div class="session-meta">
+                        <span class="session-time">${time}</span>
+                        <span class="session-count">${sess.messages ? Math.ceil(sess.messages.length / 2) : 0} msgs</span>
+                    </div>
+                    <button class="session-delete" onclick="event.stopPropagation(); deleteSession('${id}')" title="Delete conversation">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        updateFavCount();
+    }
+
+    function formatTime(isoStr) {
+        if (!isoStr) return '';
+        const d = new Date(isoStr);
+        const now = new Date();
+        const diff = now - d;
+        if (diff < 60000) return 'just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        return d.toLocaleDateString();
+    }
+
+    // ============================================
+    // Messages Rendering
+    // ============================================
+    function renderMessages(messages) {
+        const container = document.getElementById('chatMessages');
+        container.innerHTML = '';
+
+        if (!messages || messages.length === 0) {
+            container.innerHTML = `
+                <div class="welcome-message" id="welcomeMessage">
+                    <i class="fas fa-robot"></i>
+                    <h3>Welcome to Commerce Agents</h3>
+                    <p>Your AI-powered shopping assistant. Ask me to find products, compare items, or help you make a purchase.</p>
+                    <p style="margin-top:12px;font-size:12px;color:var(--gray-300);">Try: "find me a jacket" or "show me electronics"</p>
+                </div>
+            `;
+            return;
+        }
+
+        messages.forEach(msg => {
+            if (msg.role === 'user') {
+                addUserBubble(msg.content, false);
+            } else if (msg.role === 'bot') {
+                addBotBubble(msg.content, false);
+                if (msg.products && msg.products.length > 0) {
+                    msg.products.forEach(p => addProductCardInline(p, false));
+                }
+            }
+        });
+
+        scrollToBottom();
+    }
+
+    function addUserBubble(text, animate = true) {
         const container = document.getElementById('chatMessages');
         const div = document.createElement('div');
-        div.className = `message ${sender}`;
+        div.className = 'message user' + (animate ? '' : '');
         div.textContent = text;
         container.appendChild(div);
         scrollToBottom();
     }
 
-    // ============================================
-    // "思考中"动画
-    // ============================================
-    function showThinking() {
+    function addBotBubble(text, animate = true) {
         const container = document.getElementById('chatMessages');
         const div = document.createElement('div');
-        div.className = 'message bot';
-        div.id = 'thinking-' + Date.now();
-        div.innerHTML = `
-            <div class="thinking">
-                <span></span><span></span><span></span>
-            </div>`;
+        div.className = 'message bot' + (animate ? '' : '');
+        // Parse markdown
+        div.innerHTML = marked.parse(text);
         container.appendChild(div);
         scrollToBottom();
-        return div.id;
     }
 
-    function removeThinking(id) {
-        const el = document.getElementById(id);
+    function addProductCardInline(product, animate = true) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'inline-product-card' + (animate ? '' : '');
+        div.id = 'prod-inline-' + product.id;
+
+        const fav = isFavorite(product.id);
+        const priceTag = '$' + (product.price || 0).toFixed(2);
+        const ratingVal = product.rating?.rate || product.rating || 'N/A';
+        const category = product.category || 'general';
+
+        div.innerHTML = `
+            <img class="card-img" src="${product.image || ''}" alt="${escapeHtml(product.title)}"
+                 onerror="this.src='https://placehold.co/90x90/e2e8f0/94a3b8?text=No+Image'">
+            <div class="card-body">
+                <div class="card-title">${escapeHtml(product.title)}</div>
+                <div class="card-tags">
+                    <span class="card-tag tag-price">${priceTag}</span>
+                    <span class="card-tag tag-rating">★ ${ratingVal}</span>
+                    <span class="card-tag">${escapeHtml(category)}</span>
+                    ${product.source ? `<span class="card-tag tag-source">${escapeHtml(product.source)}</span>` : ''}
+                </div>
+                <div class="card-price">${priceTag}</div>
+                <div class="card-actions">
+                    <button class="btn-fav ${fav ? 'active' : ''}" onclick="toggleFavFromCard(${product.id})" title="Save to favorites">
+                        <i class="fa${fav ? 's' : 'r'} fa-star"></i> ${fav ? 'Saved' : 'Save'}
+                    </button>
+                    ${product.url
+                        ? `<button class="btn-buy btn-site" onclick="window.open('${escapeHtml(product.url)}','_blank','noopener')" title="View on merchant site">
+                            <i class="fas fa-external-link-alt"></i> View on Site
+                           </button>`
+                        : `<button class="btn-buy" onclick="buyProductById(${product.id})" title="Buy now">
+                            <i class="fas fa-shopping-cart"></i> Buy
+                           </button>`
+                    }
+                    <button class="btn-detail" onclick="showProductDetail(${product.id})" title="View details">
+                        <i class="fas fa-eye"></i> Details
+                    </button>
+                </div>
+            </div>
+        `;
+        container.appendChild(div);
+        scrollToBottom();
+    }
+
+    function showThinking() {
+        const container = document.getElementById('chatMessages');
+        // Remove welcome if present
+        const welcome = document.getElementById('welcomeMessage');
+        if (welcome) welcome.remove();
+
+        const div = document.createElement('div');
+        div.className = 'message bot';
+        div.id = 'thinkingIndicator';
+        div.innerHTML = `
+            <div class="thinking-dots">
+                <span></span><span></span><span></span>
+            </div>
+        `;
+        container.appendChild(div);
+        scrollToBottom();
+    }
+
+    function removeThinking() {
+        const el = document.getElementById('thinkingIndicator');
         if (el) el.remove();
     }
 
-    // ============================================
-    // 商品卡片
-    // ============================================
-    function addProductCard(product) {
+    function scrollToBottom() {
         const container = document.getElementById('chatMessages');
-        const card = document.createElement('div');
-        card.className = 'product-card';
-        card.innerHTML = `
-            <img src="${product.image}" alt="${product.title}" onerror="this.src='https://via.placeholder.com/80'">
-            <div class="product-info">
-                <div class="title">${product.title}</div>
-                <div class="category">${product.category}</div>
-                <div class="price">$${product.price}</div>
-                <div class="rating">⭐ ${product.rating?.rate ?? 'N/A'} (${product.rating?.count ?? 0})</div>
-                <div class="actions">
-                    <button class="btn-buy" onclick="openPayment(${product.id}, '${product.title.replace(/'/g, "\\'")}', ${product.price})">
-                        Buy Now
-                    </button>
-                </div>
-            </div>`;
-        container.appendChild(card);
-        scrollToBottom();
+        requestAnimationFrame(() => {
+            container.scrollTop = container.scrollHeight;
+        });
     }
 
     // ============================================
-    // 支付流程
+    // Send / Chat API
     // ============================================
-    function openPayment(productId, productName, price) {
-        currentProduct = { id: productId, name: productName, price: price };
+    async function sendMessage() {
+        const textarea = document.getElementById('userInput');
+        const message = textarea.value.trim();
+        if (!message || isProcessing) return;
 
-        document.getElementById('paymentProductName').textContent = productName;
-        document.getElementById('paymentAmount').textContent = `$${price.toFixed(2)}`;
-        document.getElementById('paymentStatus').className = 'payment-status';
-        document.getElementById('paymentStatus').style.display = 'none';
+        // Auto-create session
+        if (!currentSessionId) {
+            const id = generateId();
+            const session = {
+                id: id,
+                title: message.slice(0, 60),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                messages: []
+            };
+            saveSession(session);
+            currentSessionId = id;
+            renderSessionList();
+        }
+
+        // Clear input
+        textarea.value = '';
+        textarea.style.height = 'auto';
+
+        // Remove welcome
+        const welcome = document.getElementById('welcomeMessage');
+        if (welcome) welcome.remove();
+
+        // Show user message
+        addUserBubble(message);
+        showThinking();
+        setProcessing(true);
+
+        // Save user message
+        const sessions = getSessions();
+        const session = sessions[currentSessionId];
+        if (session) {
+            session.messages.push({ role: 'user', content: message });
+            session.updatedAt = new Date().toISOString();
+            // Update title if first message
+            if (session.messages.length === 1) {
+                session.title = message.slice(0, 60);
+                document.getElementById('chatTitle').textContent = session.title;
+            }
+            saveSession(session);
+            renderSessionList();
+        }
+
+        try {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: currentSessionId,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            removeThinking();
+
+            // Show bot response
+            addBotBubble(data.reply);
+
+            // Show products
+            if (data.products && data.products.length > 0) {
+                currentProducts = data.products;
+                data.products.forEach(p => addProductCardInline(p));
+            } else {
+                currentProducts = [];
+            }
+
+            // Save bot message to session
+            const sessions2 = getSessions();
+            const sess2 = sessions2[currentSessionId];
+            if (sess2) {
+                sess2.messages.push({
+                    role: 'bot',
+                    content: data.reply,
+                    products: data.products || []
+                });
+                sess2.updatedAt = new Date().toISOString();
+                saveSession(sess2);
+                renderSessionList();
+            }
+
+            // Refresh panels
+            refreshPanelProducts();
+            refreshPanelFavorites();
+            refreshPanelCompare();
+
+        } catch (error) {
+            removeThinking();
+            addBotBubble('Sorry, something went wrong. Please try again.\n\n> ' + error.message);
+        } finally {
+            setProcessing(false);
+            textarea.focus();
+        }
+    }
+
+    function setProcessing(processing) {
+        isProcessing = processing;
+        document.getElementById('sendBtn').disabled = processing;
+        document.getElementById('userInput').disabled = processing;
+        document.getElementById('inputStatus').classList.toggle('show', processing);
+    }
+
+    // ============================================
+    // Input Controls
+    // ============================================
+    function clearInput() {
+        document.getElementById('userInput').value = '';
+        document.getElementById('userInput').style.height = 'auto';
+        document.getElementById('userInput').focus();
+    }
+
+    function clearChat() {
+        if (!currentSessionId) return;
+        if (!confirm('Clear all messages in this conversation?')) return;
+
+        const sessions = getSessions();
+        const session = sessions[currentSessionId];
+        if (session) {
+            session.messages = [];
+            session.updatedAt = new Date().toISOString();
+            saveSession(session);
+            renderMessages([]);
+            currentProducts = [];
+            refreshPanelProducts();
+            refreshPanelFavorites();
+            refreshPanelCompare();
+            document.getElementById('chatTitle').textContent = session.title || 'Current Chat';
+            renderSessionList();
+        }
+    }
+
+    // Auto-resize textarea
+    document.getElementById('userInput').addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+
+    // Enter to send, Shift+Enter for newline
+    document.getElementById('userInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // ============================================
+    // Favorites — From card button
+    // ============================================
+    function toggleFavFromCard(productId) {
+        const products = [...currentProducts];
+        // Also search in messages
+        const sessions = getSessions();
+        for (const sid in sessions) {
+            const sess = sessions[sid];
+            for (const msg of (sess.messages || [])) {
+                if (msg.products) {
+                    msg.products.forEach(p => {
+                        if (!products.find(x => x.id === p.id)) {
+                            products.push(p);
+                        }
+                    });
+                }
+            }
+        }
+
+        const product = products.find(p => p.id === productId);
+        if (!product) {
+            showToast('Product not found', 'error');
+            return;
+        }
+
+        const nowFav = toggleFavorite(product);
+        showToast(
+            nowFav ? 'Saved to favorites!' : 'Removed from favorites',
+            nowFav ? 'success' : 'info'
+        );
+
+        // Update inline card button
+        const inlineCard = document.getElementById('prod-inline-' + productId);
+        if (inlineCard) {
+            const btn = inlineCard.querySelector('.btn-fav');
+            if (btn) {
+                btn.classList.toggle('active', nowFav);
+                btn.innerHTML = nowFav
+                    ? '<i class="fas fa-star"></i> Saved'
+                    : '<i class="far fa-star"></i> Save';
+            }
+        }
+
+        // Update grid cards
+        document.querySelectorAll('.fav-btn-panel[data-pid="' + productId + '"]').forEach(btn => {
+            btn.classList.toggle('active', nowFav);
+            btn.innerHTML = nowFav ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>';
+        });
+
+        refreshPanelFavorites();
+        updateFavCount();
+    }
+
+    function updateFavCount() {
+        const favs = getFavorites();
+        const count = Object.keys(favs).length;
+        document.getElementById('favCount').textContent = count;
+        document.getElementById('favBadgePanel').textContent = count;
+    }
+
+    // ============================================
+    // Panel Tabs
+    // ============================================
+    function switchPanelTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll('.panel-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.view === tab);
+        });
+        // Update views
+        document.querySelectorAll('.panel-view').forEach(v => {
+            v.classList.toggle('active', v.id === 'panel' + tab.charAt(0).toUpperCase() + tab.slice(1));
+        });
+    }
+
+    // ============================================
+    // Panel — Products Grid
+    // ============================================
+    function refreshPanelProducts() {
+        const grid = document.getElementById('productGrid');
+        const empty = document.getElementById('panelProductsEmpty');
+        const badge = document.getElementById('productBadge');
+
+        if (!currentProducts || currentProducts.length === 0) {
+            grid.innerHTML = '';
+            grid.style.display = 'none';
+            empty.style.display = 'block';
+            badge.textContent = '0';
+            return;
+        }
+
+        empty.style.display = 'none';
+        grid.style.display = 'grid';
+        badge.textContent = currentProducts.length;
+
+        grid.innerHTML = currentProducts.map(p => buildGridCard(p)).join('');
+    }
+
+    function buildGridCard(product) {
+        const fav = isFavorite(product.id);
+        const priceTag = '$' + (product.price || 0).toFixed(2);
+        const ratingVal = product.rating?.rate || product.rating || 'N/A';
+        const category = product.category || 'general';
+        const inCompare = compareList.some(c => c.id === product.id);
+
+        return `
+            <div class="product-grid-card" data-pid="${product.id}">
+                <div class="grid-img-wrap">
+                    <img src="${product.image || ''}" alt="${escapeHtml(product.title)}"
+                         onerror="this.src='https://placehold.co/120x120/e2e8f0/94a3b8?text=No+Image'">
+                    <button class="fav-btn-panel ${fav ? 'active' : ''}" data-pid="${product.id}"
+                            onclick="toggleFavFromCard(${product.id})" title="Save to favorites">
+                        <i class="fa${fav ? 's' : 'r'} fa-star"></i>
+                    </button>
+                </div>
+                <div class="grid-body">
+                    <div class="grid-title">${escapeHtml(product.title)}</div>
+                    <div class="grid-tags">
+                        <span class="grid-tag tag-price">${priceTag}</span>
+                        <span class="grid-tag">${escapeHtml(category)}</span>
+                        ${product.source ? `<span class="grid-tag tag-source">${escapeHtml(product.source)}</span>` : ''}
+                    </div>
+                    <div class="grid-price">${priceTag}</div>
+                    <div class="grid-actions">
+                        ${product.url
+                            ? `<button class="btn-buy-grid btn-site-grid" onclick="window.open('${escapeHtml(product.url)}','_blank','noopener')">
+                                <i class="fas fa-external-link-alt"></i> View on Site
+                               </button>`
+                            : `<button class="btn-buy-grid" onclick="buyProductById(${product.id})">
+                                <i class="fas fa-shopping-cart"></i> Buy
+                               </button>`
+                        }
+                        <button class="btn-compare ${inCompare ? 'active' : ''}"
+                                onclick="toggleCompare(${product.id})">
+                            <i class="fas fa-scale-balanced"></i> ${inCompare ? 'Added' : 'Compare'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ============================================
+    // Panel — Favorites
+    // ============================================
+    function refreshPanelFavorites() {
+        const grid = document.getElementById('favGrid');
+        const empty = document.getElementById('panelFavEmpty');
+        const favs = getFavorites();
+        const entries = Object.values(favs);
+
+        if (entries.length === 0) {
+            grid.innerHTML = '';
+            grid.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+
+        empty.style.display = 'none';
+        grid.style.display = 'grid';
+        grid.innerHTML = entries.map(f => {
+            const p = f.product;
+            return buildGridCard(p);
+        }).join('');
+
+        updateFavCount();
+    }
+
+    // ============================================
+    // Panel — Compare
+    // ============================================
+    function toggleCompare(productId) {
+        const allProducts = getAllProducts();
+        const product = allProducts.find(p => p.id === productId);
+        if (!product) return;
+
+        const idx = compareList.findIndex(c => c.id === productId);
+        if (idx >= 0) {
+            compareList.splice(idx, 1);
+        } else {
+            if (compareList.length >= 4) {
+                showToast('Maximum 4 products to compare', 'error');
+                return;
+            }
+            compareList.push(product);
+        }
+
+        refreshPanelProducts();
+        refreshPanelFavorites();
+        refreshPanelCompare();
+    }
+
+    function refreshPanelCompare() {
+        const container = document.getElementById('compareContent');
+        const empty = document.getElementById('panelCompareEmpty');
+        const badge = document.getElementById('compareBadge');
+
+        badge.textContent = compareList.length;
+
+        if (compareList.length === 0) {
+            container.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+
+        empty.style.display = 'none';
+
+        if (compareList.length === 1) {
+            // Single product view
+            const p = compareList[0];
+            container.innerHTML = `
+                <div style="text-align:center;padding:16px;">
+                    <img src="${p.image || ''}" style="max-width:120px;max-height:120px;object-fit:contain;background:var(--gray-50);border-radius:8px;padding:8px;"
+                         onerror="this.src='https://placehold.co/120x120/e2e8f0/94a3b8?text=No+Image'">
+                    <div style="font-weight:600;margin-top:8px;">${escapeHtml(p.title)}</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--success);margin-top:4px;">$${(p.price || 0).toFixed(2)}</div>
+                    <div style="font-size:12px;color:var(--gray-500);margin-top:4px;">★ ${p.rating?.rate || p.rating || 'N/A'} &middot; ${escapeHtml(p.category || '')}</div>
+                    <div style="font-size:13px;color:var(--gray-600);margin-top:8px;line-height:1.5;">${escapeHtml(p.description || '')}</div>
+                    <button class="btn-compare" style="margin-top:12px;padding:6px 16px;border:none;border-radius:8px;background:var(--gray-100);cursor:pointer;"
+                            onclick="compareList = []; refreshPanelCompare(); refreshPanelProducts();">
+                        <i class="fas fa-times"></i> Remove
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        // Multi-product comparison table
+        const fields = ['title', 'price', 'category', 'rating', 'description'];
+        const labels = { title: 'Product', price: 'Price', category: 'Category', rating: 'Rating', description: 'Description' };
+        const renderField = (p, f) => {
+            if (f === 'title') {
+                return `<div class="compare-title">${escapeHtml(p.title)}</div>
+                        <img class="compare-img" src="${p.image || ''}" onerror="this.src='https://placehold.co/48x48/e2e8f0/94a3b8?text=No'">`;
+            }
+            if (f === 'price') return `<span class="compare-price">$${(p.price || 0).toFixed(2)}</span>`;
+            if (f === 'rating') return `★ ${p.rating?.rate || p.rating || 'N/A'}`;
+            if (f === 'description') return (p.description || '').slice(0, 100) + '...';
+            return escapeHtml(p[f] || '');
+        };
+
+        // Make it a vertical comparison: rows = fields, cols = products
+        let html = '<table class="compare-table">';
+        fields.forEach(f => {
+            html += '<tr><th>' + labels[f] + '</th>';
+            compareList.forEach(p => {
+                html += '<td>' + renderField(p, f) + '</td>';
+            });
+            html += '</tr>';
+        });
+        // Remove row
+        html += '<tr><th>Action</th>';
+        compareList.forEach(p => {
+            html += `<td><button style="padding:4px 10px;border:none;border-radius:6px;background:#fee2e2;color:#991b1b;font-size:11px;cursor:pointer;"
+                           onclick="removeFromCompare(${p.id})"><i class="fas fa-times"></i> Remove</button></td>`;
+        });
+        html += '</tr></table>';
+
+        container.innerHTML = html;
+    }
+
+    function removeFromCompare(productId) {
+        const idx = compareList.findIndex(c => c.id === productId);
+        if (idx >= 0) compareList.splice(idx, 1);
+        refreshPanelCompare();
+        refreshPanelProducts();
+        refreshPanelFavorites();
+    }
+
+    // ============================================
+    // Payment / Stripe
+    // ============================================
+    let currentPaymentProduct = null;
+
+    function buyProductById(productId) {
+        const product = getAllProducts().find(p => p.id === productId);
+        if (!product) {
+            showToast('Product not found', 'error');
+            return;
+        }
+        // Web-sourced products (Brave/eBay) — open merchant site directly
+        if (product.url) {
+            window.open(product.url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        // Catalog products (FakeStore/DummyJSON) — Stripe payment flow
+        openPayment(product.id, product.title, product.price);
+    }
+
+    function openPayment(productId, productName, price) {
+        currentPaymentProduct = { id: productId, name: productName, price: price };
+
+        document.getElementById('payProductName').textContent = productName;
+        document.getElementById('payAmount').textContent = '$' + price.toFixed(2);
+        document.getElementById('payStatus').className = 'pay-status';
+        document.getElementById('payStatus').style.display = 'none';
         document.getElementById('payBtn').disabled = false;
-        document.getElementById('payBtn').textContent = 'Pay with Stripe →';
+        document.getElementById('payBtn').innerHTML = '<i class="fas fa-bolt"></i> Pay with Stripe';
 
         document.getElementById('paymentModal').classList.add('active');
     }
 
     function closePaymentModal() {
         document.getElementById('paymentModal').classList.remove('active');
-        currentProduct = null;
+        currentPaymentProduct = null;
     }
 
     async function openStripePayment() {
-        if (!currentProduct) return;
+        if (!currentPaymentProduct) return;
 
         const btn = document.getElementById('payBtn');
         btn.disabled = true;
-        btn.textContent = 'Creating payment link...';
+        btn.innerHTML = 'Creating payment link...';
 
         try {
-            const response = await fetch('http://127.0.0.1:8000/buy', {
+            const response = await fetch('/buy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    product_id: currentProduct.id,
+                    product_id: currentPaymentProduct.id,
                     quantity: 1,
-                    session_id: sessionId,
+                    session_id: currentSessionId || 'guest',
                 }),
             });
 
@@ -582,46 +2085,153 @@
 
             const data = await response.json();
 
-            // 在 Stripe 支付页面打开
+            // Open Stripe checkout in new tab
             window.open(data.payment_url, '_blank');
 
-            // 显示成功状态
-            const status = document.getElementById('paymentStatus');
-            status.className = 'payment-status success';
-            status.style.display = 'block';
-            status.textContent = '✅ Payment link opened! Complete the payment in the new tab.';
-            btn.textContent = '✅ Payment Link Created';
+            // Show success
+            const status = document.getElementById('payStatus');
+            status.className = 'pay-status success show';
+            status.textContent = '✅ Payment link opened! Complete payment in the new tab.';
+            btn.innerHTML = '✅ Link Created';
 
-            // 在聊天中显示确认
-            addMessage(`✅ Payment link created for **${data.product_name}** — $${data.total_amount.toFixed(2)}. Complete payment in the new tab.`, 'bot');
+            addBotBubble('✅ Payment link created for **' + data.product_name + '** — $' + data.total_amount.toFixed(2) + '. Complete payment in the new tab.');
 
         } catch (error) {
-            const status = document.getElementById('paymentStatus');
-            status.className = 'payment-status error';
-            status.style.display = 'block';
+            const status = document.getElementById('payStatus');
+            status.className = 'pay-status error show';
             status.textContent = '❌ Failed to create payment. Please try again.';
             btn.disabled = false;
-            btn.textContent = 'Pay with Stripe →';
+            btn.innerHTML = '<i class="fas fa-bolt"></i> Pay with Stripe';
         }
     }
 
     // ============================================
-    // 工具函数
+    // Product Detail (modal)
     // ============================================
-    function scrollToBottom() {
-        const container = document.getElementById('chatMessages');
-        container.scrollTop = container.scrollHeight;
+    function showProductDetail(productId) {
+        const product = getAllProducts().find(p => p.id === productId);
+        if (!product) {
+            showToast('Product not found', 'error');
+            return;
+        }
+
+        const desc = product.description || 'No description available.';
+        const ratingVal = product.rating?.rate || product.rating || 'N/A';
+        const countVal = product.rating?.count || product.rating || '—';
+        const sourceLabel = product.source || 'unknown';
+
+        const parts = [
+            '📦 ' + product.title,
+            '',
+            '💰 Price: $' + (product.price || 0).toFixed(2),
+            '🏷️ Category: ' + (product.category || 'N/A'),
+            '⭐ Rating: ' + ratingVal + ' (' + countVal + ' reviews)',
+            '📡 Source: ' + sourceLabel,
+        ];
+        if (product.url) {
+            parts.push('🔗 URL: ' + product.url);
+        }
+        parts.push('');
+        parts.push('📝 ' + desc);
+
+        alert(parts.join('\n'));
     }
 
-    function setInputDisabled(disabled) {
-        document.getElementById('userInput').disabled = disabled;
-        document.getElementById('sendBtn').disabled = disabled;
+    // ============================================
+    // Helpers
+    // ============================================
+    function getAllProducts() {
+        const all = [...currentProducts];
+        const sessions = getSessions();
+        for (const sid in sessions) {
+            const sess = sessions[sid];
+            for (const msg of (sess.messages || [])) {
+                if (msg.products) {
+                    msg.products.forEach(p => {
+                        if (!all.find(x => x.id === p.id)) {
+                            all.push(p);
+                        }
+                    });
+                }
+            }
+        }
+        // Also from favorites
+        const favs = getFavorites();
+        for (const fid in favs) {
+            if (!all.find(x => x.id === favs[fid].product.id)) {
+                all.push(favs[fid].product);
+            }
+        }
+        return all;
     }
 
-    // 回车发送
-    document.getElementById('userInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') sendMessage();
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+
+        const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+        toast.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i> ' + message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(20px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 2500);
+    }
+
+    // ============================================
+    // Mobile Controls
+    // ============================================
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('overlay').classList.toggle('show');
+    }
+
+    function togglePanel() {
+        document.getElementById('sidePanel').classList.toggle('open');
+        document.getElementById('overlay').classList.toggle('show');
+    }
+
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('overlay').classList.remove('show');
+    }
+
+    document.getElementById('overlay').addEventListener('click', function() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidePanel').classList.remove('open');
+        this.classList.remove('show');
     });
+
+    // ============================================
+    // Init
+    // ============================================
+    function init() {
+        renderSessionList();
+
+        // Auto-load most recent session
+        const sessions = getSessions();
+        const entries = Object.entries(sessions);
+        if (entries.length > 0) {
+            entries.sort((a, b) => new Date(b[1].updatedAt) - new Date(a[1].updatedAt));
+            loadSession(entries[0][0]);
+        }
+
+        updateFavCount();
+    }
+
+    // Start
+    init();
 </script>
 
 </body>

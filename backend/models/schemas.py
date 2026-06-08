@@ -19,14 +19,16 @@ class ProductCategory(str, Enum):
 
 
 class Product(BaseModel):
-    """Product model — matches FakeStore API response structure"""
+    """Product model — unified across all data sources"""
     id: int
     title: str
     price: float
     description: str
     category: str
     image: str
+    url: str = ""  # Direct product URL for web-sourced products
     rating: dict = Field(default_factory=lambda: {"rate": 0.0, "count": 0})
+    source: str = "unknown"
 
 
 class ChatRequest(BaseModel):
