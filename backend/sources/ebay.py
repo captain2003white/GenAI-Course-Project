@@ -164,14 +164,11 @@ class EbaySource(ProductSource):
             product_id = abs(zlib.crc32(item_id_str.encode())) if item_id_str else 0
 
             # ── description snippet ─────────────────────────────────
-            # eBay search doesn't return full descriptions; use short description if available
             short_desc = item.get("shortDescription", "")
-            # Also capture seller & condition for richer output
             seller_info = item.get("seller", {})
             seller_name = seller_info.get("username", "") if isinstance(seller_info, dict) else ""
             condition = item.get("condition", "")
 
-            # Build a useful description from available fields
             desc_parts = []
             if short_desc:
                 desc_parts.append(short_desc)
@@ -189,7 +186,7 @@ class EbaySource(ProductSource):
                 category="other",
                 image=image_url,
                 url=item_url,
-                rating={"rate": 0.0, "count": 0},  # eBay search API doesn't expose ratings
+                rating={"rate": 0.0, "count": 0},
                 source=self.name,
             ))
 

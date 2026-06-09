@@ -59,8 +59,6 @@ Agent: searches 3 data sources → returns 5
 
 ## 3. Data Sources — Why Can't I Search "All the Internet"?
 
-> "I typed 'shoes' and expected to see every shoe in the world. Why did I only get 5?"
-
 **The reality:** We are using 3 static, free APIs:
 
 | Source | Items | Auth | Status |
@@ -176,7 +174,7 @@ The low scores are not bugs — they are **honest signals** about data limitatio
 
 ```bash
 cd backend
-source venv/Scripts/activate
+.\agent_env\Scripts\activate
 uvicorn main:app --reload --port 8000
 ```
 
@@ -208,11 +206,11 @@ User: "i want to buy the first one"
 > 新建一个 session，连续输入以下 5 条消息
 
 ```
-User: "find me some jewelery"
+User: "find me some coat"
 User: "I need a jacket for winter, any recommendations?"
 User: "great! now i also need women's clothing for my mom"
-User: "perfect. can you search for laptops or electronics?"
-User: "also show me some electronics"
+User: "perfect. I'm looking to buy a laptop. Could you recommend a few good options?"
+User: "also show me backpack"
 ```
 
 > 第 2 条不是简单重复搜索，而是追问"推荐"——LLM 理解这是在上一轮结果基础上的追问。第 3 条换了品类（jacket → backpack），LLM 识别为新搜索。

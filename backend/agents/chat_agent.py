@@ -147,8 +147,8 @@ class ChatAgent:
             response = client.chat.completions.create(
                 model=MODEL,
                 messages=messages,
-                temperature=0.7,
-                max_tokens=500,
+                temperature=0.3,    # Lower = more deterministic JSON output
+                max_tokens=2048,    # Plenty of room for long conversations
             )
 
             llm_output = response.choices[0].message.content.strip()
